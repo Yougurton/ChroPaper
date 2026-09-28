@@ -2,13 +2,13 @@
 
 # ChroPaper
 
-**Веб-обои для Wallpaper Engine показывающие световые шоу Beat Saber**
+**Световые шоу Beat Saber в виде живых обоев для Wallpaper Engine**
 
 [English version](README.md)
 
 </div>
 
-ChroPaper — веб-обои для [Wallpaper Engine](https://www.wallpaperengine.io/), которые превращают музыку, играющую на компьютере, в световое шоу Beat Saber прямо на рабочем столе. Проект построен на [ChroViewer](https://github.com/Umbranoxio/chroviewer), браузерном просмотрщике карт Beat Saber. От ChroViewer взят рендер: окружения, свет, стены, поддержка Chroma и Noodle. Сверху добавлено то, что нужно обоям: лайтшоу, которое строится из звука на лету, синхронизация с настоящими картами с BeatSaver, компактный плеер и настройки в Wallpaper Engine.
+ChroPaper — веб-обои для [Wallpaper Engine](https://www.wallpaperengine.io/), которые превращают музыку, играющую на компьютере, в световое шоу Beat Saber прямо на рабочем столе. Проект построен на [ChroViewer](https://github.com/Umbranoxio/chroviewer), браузерном просмотрщике карт Beat Saber. От ChroViewer взят рендер: окружения, свет, стены, поддержка Chroma и Noodle. Сверху добавлено то, что нужно обоям: лайтшоу, которое строится из звука на лету, синхронизация с настоящими картами с BeatSaver, компактный плеер и настройки Wallpaper Engine.
 
 ## Особенности
 
@@ -17,6 +17,7 @@ ChroPaper — веб-обои для [Wallpaper Engine](https://www.wallpapereng
 - **Лайтшоу из вашей музыки.** Заставка следит за темпом и битом того, что играет на компьютере, и освещает трек так, как это сделал бы маппер. Когда ничего не играет, идёт спокойное фоновое шоу.
 - **Синхронизация с картами BeatSaver.** Если для играющего трека есть карта, показывается её настоящее лайтшоу, выровненное по самому звуку. Уже синхронизированные треки запускаются из кеша без обращения к серверу.
 - **Компактный плеер.** Текущий трек и обложка, открывается при наведении курсора.
+- **Гибкие настройки.** Качество графики, камера, параллакс и интерфейс на русском и английском.
 
 ## Установка
 
@@ -36,7 +37,7 @@ ChroPaper — веб-обои для [Wallpaper Engine](https://www.wallpapereng
 
 - **[ChroViewer](https://github.com/Umbranoxio/chroviewer)** — **Umbranoxio** и участники проекта. Оригинальный просмотрщик карт и реплеев Beat Saber, на котором построена ChroPaper.
 - **[ChroMapper](https://github.com/Caeden117/ChroMapper)** — **Caeden117** и участники проекта. Данные окружений, математика превью, шейдеры, материалы и код освещения ChroViewer взяты из ChroMapper.
-- **Yougurton** адаптировал ChroViewer под Wallpaper Engine: генерация лайтшоу, синхронизация, интерфейс и настройки.
+- **Yougurton** адаптировал ChroViewer под Wallpaper Engine: лайтшоу заставки, синхронизацию, интерфейс и настройки.
 - Авторы текстур перечислены в [ATTRIBUTIONS.md](ATTRIBUTIONS.md).
 - Карты берутся с [BeatSaver](https://beatsaver.com/), обложки и другие названия песен через iTunes Search API.
 

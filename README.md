@@ -2,13 +2,13 @@
 
 # ChroPaper
 
-**Beat Saber lightshows as a live wallpaper for Wallpaper Engine**
+**A web wallpaper for Wallpaper Engine that shows Beat Saber lightshows**
 
 [Русская версия](README.ru.md)
 
 </div>
 
-ChroPaper is a web wallpaper for [Wallpaper Engine](https://www.wallpaperengine.io/) that turns the music playing on your PC into a Beat Saber lightshow right on your desktop. It's built on [ChroViewer](https://github.com/Umbranoxio/chroviewer), a browser-based Beat Saber map viewer. ChroPaper keeps ChroViewer's rendering (environments, lighting, walls and Chroma/Noodle support) and adds what a wallpaper needs: a lightshow generated live from the audio, syncing with real BeatSaver maps, a compact player and Wallpaper Engine settings.
+ChroPaper is a web wallpaper for [Wallpaper Engine](https://www.wallpaperengine.io/) that turns the music playing on your PC into a Beat Saber lightshow right on your desktop. It's built on [ChroViewer](https://github.com/Umbranoxio/chroviewer), a browser-based Beat Saber map viewer. ChroPaper keeps ChroViewer's rendering (environments, lighting, walls and Chroma/Noodle support) and adds what a wallpaper needs: a lightshow generated live from the audio, syncing with real BeatSaver maps, a compact player and settings in Wallpaper Engine.
 
 ## Features
 
@@ -17,7 +17,6 @@ ChroPaper is a web wallpaper for [Wallpaper Engine](https://www.wallpaperengine.
 - **Lightshow from your music.** The screensaver follows the tempo and beats of whatever plays on your computer and lights it the way a mapper would; a calm idle show runs when nothing plays.
 - **Sync with BeatSaver maps.** When a map exists for the playing track, its real lightshow is shown, lined up with the music by the audio itself. Tracks synced before start from the cache without any server request.
 - **Compact player.** Current track and cover; it opens when you hover over it.
-- **Flexible settings.** Graphics quality, camera, parallax, and an interface in English and Russian.
 
 ## Setup
 
@@ -37,7 +36,7 @@ How to install the dependencies, build the project and add it to Wallpaper Engin
 
 - **[ChroViewer](https://github.com/Umbranoxio/chroviewer)** by **Umbranoxio** and contributors: the original Beat Saber map and replay viewer ChroPaper is built on.
 - **[ChroMapper](https://github.com/Caeden117/ChroMapper)** by **Caeden117** and contributors. ChroViewer's environment data, preview math, shaders, materials and lighting code come from ChroMapper.
-- **Yougurton** adapted ChroViewer for Wallpaper Engine as ChroPaper: the screensaver lightshow, sync, the interface and the settings.
+- **Yougurton** adapted ChroViewer for Wallpaper Engine as ChroPaper: lightshow generation, sync, the interface and the settings.
 - Texture authors are listed in [ATTRIBUTIONS.md](ATTRIBUTIONS.md).
 - Maps come from [BeatSaver](https://beatsaver.com/), covers and alternative song names from the iTunes Search API.
 
