@@ -1,0 +1,24 @@
+# Normalize text files to LF in the repository
+* text=auto eol=lf
+
+# Wallpaper Engine writes project.json with CRLF line endings; keep them as they are
+public/project.json text eol=crlf
+
+# Binary assets
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.glb binary
+*.egg binary
+*.ogg binary
+*.wav binary
+*.mp3 binary
+*.zip binary
+*.woff binary
+*.woff2 binary
+
+# Generated environment data: hide from diffs and language stats
+public/environments/*.json linguist-generated=true -diff

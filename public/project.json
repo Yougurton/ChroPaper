@@ -1,0 +1,695 @@
+{
+	"file" : "index.html",
+	"general" : 
+	{
+		"localization" : 
+		{
+			"en-us" : 
+			{
+				"ui_cache_size" : "Map cache size, MB",
+				"ui_camera_distance" : "Distance, m",
+				"ui_camera_fov" : "Field of view (FOV)",
+				"ui_fps_limit" : "FPS limit",
+				"ui_listen_color_left" : "Left lights",
+				"ui_listen_color_right" : "Right lights",
+				"ui_listen_colors" : "Light colors",
+				"ui_listen_colors_opt_custom" : "My colors",
+				"ui_listen_colors_opt_default" : "Environment / map colors",
+				"ui_listen_colors_opt_random" : "Random on track change",
+				"ui_listen_colors_synced" : "Also for synced maps (without their own colors, Chroma or V3)",
+				"ui_listen_environment" : "Screensaver environment",
+				"ui_listen_environment_opt_BTSEnvironment" : "BTS",
+				"ui_listen_environment_opt_BigMirrorEnvironment" : "Big Mirror",
+				"ui_listen_environment_opt_CrabRaveEnvironment" : "Crab Rave",
+				"ui_listen_environment_opt_DefaultEnvironment" : "The First",
+				"ui_listen_environment_opt_DragonsEnvironment" : "Dragons",
+				"ui_listen_environment_opt_FitBeatEnvironment" : "Fit Beat",
+				"ui_listen_environment_opt_GagaEnvironment" : "Gaga",
+				"ui_listen_environment_opt_GlassDesertEnvironment" : "Glass Desert",
+				"ui_listen_environment_opt_GreenDayEnvironment" : "Green Day",
+				"ui_listen_environment_opt_GreenDayGrenadeEnvironment" : "Green Day Grenade",
+				"ui_listen_environment_opt_HalloweenEnvironment" : "Spooky",
+				"ui_listen_environment_opt_InterscopeEnvironment" : "Interscope",
+				"ui_listen_environment_opt_KDAEnvironment" : "KDA",
+				"ui_listen_environment_opt_KaleidoscopeEnvironment" : "Kaleidoscope",
+				"ui_listen_environment_opt_LinkinParkEnvironment" : "Linkin Park",
+				"ui_listen_environment_opt_MonstercatEnvironment" : "Monstercat",
+				"ui_listen_environment_opt_NiceEnvironment" : "Nice",
+				"ui_listen_environment_opt_OriginsEnvironment" : "Origins",
+				"ui_listen_environment_opt_PanicEnvironment" : "Panic",
+				"ui_listen_environment_opt_RocketEnvironment" : "Rocket",
+				"ui_listen_environment_opt_SkrillexEnvironment" : "Skrillex",
+				"ui_listen_environment_opt_TimbalandEnvironment" : "Timbaland",
+				"ui_listen_environment_opt_TriangleEnvironment" : "Triangle",
+				"ui_listen_random_environment" : "Random environment on track change",
+				"ui_listen_sync_enabled" : "Find and sync a map from BeatSaver (experimental)",
+				"ui_listen_sync_offset" : "Sync correction, x0.1s (+ forward, − back)",
+				"ui_listen_sync_rich_maps" : "Also V3/Noodle maps (need more resources)",
+				"ui_mirror_quality" : "Mirror quality",
+				"ui_mirror_quality_opt_high" : "High",
+				"ui_mirror_quality_opt_low" : "Low",
+				"ui_mirror_quality_opt_medium" : "Medium",
+				"ui_mirror_quality_opt_none" : "Off",
+				"ui_note_cache_size" : "How much space saved maps may take up. When the cache is full, the ones not played for the longest are removed",
+				"ui_note_walls" : "Wall settings only apply to Noodle Extensions maps.",
+				"ui_parallax_enabled" : "Parallax",
+				"ui_parallax_intensity" : "Intensity, %",
+				"ui_parallax_invert_x" : "Invert horizontally",
+				"ui_parallax_invert_y" : "Invert vertically",
+				"ui_parallax_jelly" : "Smoothness, %",
+				"ui_pin_panel" : "Don't auto-collapse the panel (📌)",
+				"ui_pin_status" : "Always show Now playing (👁)",
+				"ui_render_scale" : "Render scale, %",
+				"ui_screen_displacement" : "Improved wall textures",
+				"ui_settings_section" : "⚙️  Settings section",
+				"ui_settings_section_opt_camera" : "Camera",
+				"ui_settings_section_opt_graphics" : "Graphics",
+				"ui_settings_section_opt_interface" : "Interface",
+				"ui_settings_section_opt_misc" : "Misc",
+				"ui_settings_section_opt_playback" : "Screensaver",
+				"ui_show_epilepsy_warning" : "Photosensitivity warning on startup",
+				"ui_show_fps" : "FPS counter",
+				"ui_show_player_platform" : "Show player platform",
+				"ui_show_ui_hint" : "Show hints",
+				"ui_show_walls" : "Show walls",
+				"ui_ui_language" : "Interface language",
+				"ui_ui_language_opt_auto" : "Automatic (system)",
+				"ui_ui_language_opt_en" : "English",
+				"ui_ui_language_opt_ru" : "Russian",
+				"ui_ui_position" : "Position",
+				"ui_ui_position_opt_bottom-center" : "Bottom center",
+				"ui_ui_position_opt_bottom-left" : "Bottom left",
+				"ui_ui_position_opt_bottom-right" : "Bottom right",
+				"ui_ui_position_opt_top-center" : "Top center",
+				"ui_ui_position_opt_top-left" : "Top left",
+				"ui_ui_position_opt_top-right" : "Top right"
+			},
+			"ru-ru" : 
+			{
+				"ui_cache_size" : "Размер кеша карт, МБ",
+				"ui_camera_distance" : "Дистанция, м",
+				"ui_camera_fov" : "Угол обзора (FOV)",
+				"ui_fps_limit" : "Ограничение FPS",
+				"ui_listen_color_left" : "Левый свет",
+				"ui_listen_color_right" : "Правый свет",
+				"ui_listen_colors" : "Цвета света",
+				"ui_listen_colors_opt_custom" : "Свои цвета",
+				"ui_listen_colors_opt_default" : "Цвета окружения / карты",
+				"ui_listen_colors_opt_random" : "Случайные при смене трека",
+				"ui_listen_colors_synced" : "Также для синхронизированных карт (Кроме Chroma, V3 и уже заданных картографом цветов)",
+				"ui_listen_environment" : "Окружение",
+				"ui_listen_environment_opt_BTSEnvironment" : "BTS",
+				"ui_listen_environment_opt_BigMirrorEnvironment" : "Big Mirror",
+				"ui_listen_environment_opt_CrabRaveEnvironment" : "Crab Rave",
+				"ui_listen_environment_opt_DefaultEnvironment" : "The First",
+				"ui_listen_environment_opt_DragonsEnvironment" : "Dragons",
+				"ui_listen_environment_opt_FitBeatEnvironment" : "Fit Beat",
+				"ui_listen_environment_opt_GagaEnvironment" : "Gaga",
+				"ui_listen_environment_opt_GlassDesertEnvironment" : "Glass Desert",
+				"ui_listen_environment_opt_GreenDayEnvironment" : "Green Day",
+				"ui_listen_environment_opt_GreenDayGrenadeEnvironment" : "Green Day Grenade",
+				"ui_listen_environment_opt_HalloweenEnvironment" : "Spooky",
+				"ui_listen_environment_opt_InterscopeEnvironment" : "Interscope",
+				"ui_listen_environment_opt_KDAEnvironment" : "KDA",
+				"ui_listen_environment_opt_KaleidoscopeEnvironment" : "Kaleidoscope",
+				"ui_listen_environment_opt_LinkinParkEnvironment" : "Linkin Park",
+				"ui_listen_environment_opt_MonstercatEnvironment" : "Monstercat",
+				"ui_listen_environment_opt_NiceEnvironment" : "Nice",
+				"ui_listen_environment_opt_OriginsEnvironment" : "Origins",
+				"ui_listen_environment_opt_PanicEnvironment" : "Panic",
+				"ui_listen_environment_opt_RocketEnvironment" : "Rocket",
+				"ui_listen_environment_opt_SkrillexEnvironment" : "Skrillex",
+				"ui_listen_environment_opt_TimbalandEnvironment" : "Timbaland",
+				"ui_listen_environment_opt_TriangleEnvironment" : "Triangle",
+				"ui_listen_random_environment" : "Случайное окружение при смене трека",
+				"ui_listen_sync_enabled" : "Искать и синхронизировать карту с BeatSaver (экспериментально)",
+				"ui_listen_sync_offset" : "Коррекция синхронизации, x0.1с (+ вперёд, − назад)",
+				"ui_listen_sync_rich_maps" : "Также V3/Noodle-карты (требуют больше ресурсов)",
+				"ui_mirror_quality" : "Качество отражений",
+				"ui_mirror_quality_opt_high" : "Высокое",
+				"ui_mirror_quality_opt_low" : "Низкое",
+				"ui_mirror_quality_opt_medium" : "Среднее",
+				"ui_mirror_quality_opt_none" : "Выключены",
+				"ui_note_cache_size" : "Сколько места могут занимать сохранённые карты. Когда кеш заполнен, удаляются те, что дольше всего не играли",
+				"ui_note_walls" : "Настройки стен применяются только к картам с Noodle Extensions",
+				"ui_parallax_enabled" : "Параллакс",
+				"ui_parallax_intensity" : "Интенсивность, %",
+				"ui_parallax_invert_x" : "Инвертировать по горизонтали",
+				"ui_parallax_invert_y" : "Инвертировать по вертикали",
+				"ui_parallax_jelly" : "Плавность, %",
+				"ui_pin_panel" : "Не сворачивать панель автоматически (📌)",
+				"ui_pin_status" : "Всегда показывать статус (👁)",
+				"ui_render_scale" : "Масштаб рендера, %",
+				"ui_screen_displacement" : "Улучшенные текстуры стен",
+				"ui_settings_section" : "⚙️  Раздел настроек",
+				"ui_settings_section_opt_camera" : "Камера",
+				"ui_settings_section_opt_graphics" : "Графика",
+				"ui_settings_section_opt_interface" : "Интерфейс",
+				"ui_settings_section_opt_misc" : "Разное",
+				"ui_settings_section_opt_playback" : "Основные",
+				"ui_show_epilepsy_warning" : "Предупреждение об эпилепсии при запуске",
+				"ui_show_fps" : "Счётчик FPS",
+				"ui_show_player_platform" : "Показывать платформу игрока",
+				"ui_show_ui_hint" : "Показывать подсказки",
+				"ui_show_walls" : "Показывать стены",
+				"ui_ui_language" : "Язык интерфейса",
+				"ui_ui_language_opt_auto" : "Автоматически (по системе)",
+				"ui_ui_language_opt_en" : "English",
+				"ui_ui_language_opt_ru" : "Русский",
+				"ui_ui_position" : "Расположение",
+				"ui_ui_position_opt_bottom-center" : "Снизу по центру",
+				"ui_ui_position_opt_bottom-left" : "Снизу слева",
+				"ui_ui_position_opt_bottom-right" : "Снизу справа",
+				"ui_ui_position_opt_top-center" : "Сверху по центру",
+				"ui_ui_position_opt_top-left" : "Сверху слева",
+				"ui_ui_position_opt_top-right" : "Сверху справа"
+			}
+		},
+		"properties" : 
+		{
+			"cache_size" : 
+			{
+				"condition" : "settings_section.value == 'misc'",
+				"index" : 21,
+				"max" : 20480,
+				"min" : 256,
+				"order" : 121,
+				"step" : 256,
+				"text" : "ui_cache_size",
+				"type" : "slider",
+				"value" : 1024
+			},
+			"camera_distance" : 
+			{
+				"condition" : "settings_section.value == 'camera'",
+				"index" : 9,
+				"max" : 10,
+				"min" : 0,
+				"order" : 109,
+				"text" : "ui_camera_distance",
+				"type" : "slider",
+				"value" : 4
+			},
+			"camera_fov" : 
+			{
+				"condition" : "settings_section.value == 'camera'",
+				"index" : 8,
+				"max" : 120,
+				"min" : 60,
+				"order" : 108,
+				"text" : "ui_camera_fov",
+				"type" : "slider",
+				"value" : 70
+			},
+			"fps_limit" : 
+			{
+				"condition" : "settings_section.value == 'misc'",
+				"index" : 24,
+				"max" : 240,
+				"min" : 30,
+				"order" : 124,
+				"step" : 1,
+				"text" : "ui_fps_limit",
+				"type" : "slider",
+				"value" : 60
+			},
+			"listen_color_left" : 
+			{
+				"condition" : "settings_section.value == 'playback' && listen_colors.value == 'custom'",
+				"index" : 28,
+				"order" : 128,
+				"text" : "ui_listen_color_left",
+				"type" : "color",
+				"value" : "0.7843 0.0784 0.0784"
+			},
+			"listen_color_right" : 
+			{
+				"condition" : "settings_section.value == 'playback' && listen_colors.value == 'custom'",
+				"index" : 29,
+				"order" : 129,
+				"text" : "ui_listen_color_right",
+				"type" : "color",
+				"value" : "0.1569 0.5569 0.8235"
+			},
+			"listen_colors" : 
+			{
+				"condition" : "settings_section.value == 'playback'",
+				"index" : 27,
+				"options" : 
+				[
+					{
+						"label" : "ui_listen_colors_opt_default",
+						"value" : "default"
+					},
+					{
+						"label" : "ui_listen_colors_opt_random",
+						"value" : "random"
+					},
+					{
+						"label" : "ui_listen_colors_opt_custom",
+						"value" : "custom"
+					}
+				],
+				"order" : 127,
+				"text" : "ui_listen_colors",
+				"type" : "combo",
+				"value" : "default"
+			},
+			"listen_colors_synced" : 
+			{
+				"condition" : "settings_section.value == 'playback' && listen_colors.value != 'default'",
+				"index" : 30,
+				"order" : 130,
+				"text" : "ui_listen_colors_synced",
+				"type" : "bool",
+				"value" : false
+			},
+			"listen_environment" : 
+			{
+				"condition" : "settings_section.value == 'playback' && listen_random_environment.value == false",
+				"index" : 26,
+				"options" : 
+				[
+					{
+						"label" : "ui_listen_environment_opt_DefaultEnvironment",
+						"value" : "DefaultEnvironment"
+					},
+					{
+						"label" : "ui_listen_environment_opt_OriginsEnvironment",
+						"value" : "OriginsEnvironment"
+					},
+					{
+						"label" : "ui_listen_environment_opt_TriangleEnvironment",
+						"value" : "TriangleEnvironment"
+					},
+					{
+						"label" : "ui_listen_environment_opt_NiceEnvironment",
+						"value" : "NiceEnvironment"
+					},
+					{
+						"label" : "ui_listen_environment_opt_BigMirrorEnvironment",
+						"value" : "BigMirrorEnvironment"
+					},
+					{
+						"label" : "ui_listen_environment_opt_DragonsEnvironment",
+						"value" : "DragonsEnvironment"
+					},
+					{
+						"label" : "ui_listen_environment_opt_KDAEnvironment",
+						"value" : "KDAEnvironment"
+					},
+					{
+						"label" : "ui_listen_environment_opt_MonstercatEnvironment",
+						"value" : "MonstercatEnvironment"
+					},
+					{
+						"label" : "ui_listen_environment_opt_CrabRaveEnvironment",
+						"value" : "CrabRaveEnvironment"
+					},
+					{
+						"label" : "ui_listen_environment_opt_PanicEnvironment",
+						"value" : "PanicEnvironment"
+					},
+					{
+						"label" : "ui_listen_environment_opt_RocketEnvironment",
+						"value" : "RocketEnvironment"
+					},
+					{
+						"label" : "ui_listen_environment_opt_GreenDayGrenadeEnvironment",
+						"value" : "GreenDayGrenadeEnvironment"
+					},
+					{
+						"label" : "ui_listen_environment_opt_GreenDayEnvironment",
+						"value" : "GreenDayEnvironment"
+					},
+					{
+						"label" : "ui_listen_environment_opt_TimbalandEnvironment",
+						"value" : "TimbalandEnvironment"
+					},
+					{
+						"label" : "ui_listen_environment_opt_FitBeatEnvironment",
+						"value" : "FitBeatEnvironment"
+					},
+					{
+						"label" : "ui_listen_environment_opt_LinkinParkEnvironment",
+						"value" : "LinkinParkEnvironment"
+					},
+					{
+						"label" : "ui_listen_environment_opt_GlassDesertEnvironment",
+						"value" : "GlassDesertEnvironment"
+					},
+					{
+						"label" : "ui_listen_environment_opt_BTSEnvironment",
+						"value" : "BTSEnvironment"
+					},
+					{
+						"label" : "ui_listen_environment_opt_KaleidoscopeEnvironment",
+						"value" : "KaleidoscopeEnvironment"
+					},
+					{
+						"label" : "ui_listen_environment_opt_InterscopeEnvironment",
+						"value" : "InterscopeEnvironment"
+					},
+					{
+						"label" : "ui_listen_environment_opt_GagaEnvironment",
+						"value" : "GagaEnvironment"
+					},
+					{
+						"label" : "ui_listen_environment_opt_SkrillexEnvironment",
+						"value" : "SkrillexEnvironment"
+					},
+					{
+						"label" : "ui_listen_environment_opt_HalloweenEnvironment",
+						"value" : "HalloweenEnvironment"
+					}
+				],
+				"order" : 126,
+				"text" : "ui_listen_environment",
+				"type" : "combo",
+				"value" : "BigMirrorEnvironment"
+			},
+			"listen_random_environment" : 
+			{
+				"condition" : "settings_section.value == 'playback'",
+				"index" : 25,
+				"order" : 125,
+				"text" : "ui_listen_random_environment",
+				"type" : "bool",
+				"value" : false
+			},
+			"listen_sync_enabled" : 
+			{
+				"condition" : "settings_section.value == 'playback'",
+				"index" : 31,
+				"order" : 131,
+				"text" : "ui_listen_sync_enabled",
+				"type" : "bool",
+				"value" : true
+			},
+			"listen_sync_offset" : 
+			{
+				"condition" : "settings_section.value == 'playback' && listen_sync_enabled.value",
+				"index" : 32,
+				"max" : 20,
+				"min" : -20,
+				"order" : 132,
+				"text" : "ui_listen_sync_offset",
+				"type" : "slider",
+				"value" : 0
+			},
+			"listen_sync_rich_maps" : 
+			{
+				"condition" : "settings_section.value == 'playback' && listen_sync_enabled.value",
+				"index" : 33,
+				"order" : 133,
+				"text" : "ui_listen_sync_rich_maps",
+				"type" : "bool",
+				"value" : true
+			},
+			"mirror_quality" : 
+			{
+				"condition" : "settings_section.value == 'graphics'",
+				"index" : 3,
+				"options" : 
+				[
+					{
+						"label" : "ui_mirror_quality_opt_none",
+						"value" : "none"
+					},
+					{
+						"label" : "ui_mirror_quality_opt_low",
+						"value" : "low"
+					},
+					{
+						"label" : "ui_mirror_quality_opt_medium",
+						"value" : "medium"
+					},
+					{
+						"label" : "ui_mirror_quality_opt_high",
+						"value" : "high"
+					}
+				],
+				"order" : 103,
+				"text" : "ui_mirror_quality",
+				"type" : "combo",
+				"value" : "medium"
+			},
+			"parallax_enabled" : 
+			{
+				"condition" : "settings_section.value == 'camera'",
+				"index" : 10,
+				"order" : 110,
+				"text" : "ui_parallax_enabled",
+				"type" : "bool",
+				"value" : false
+			},
+			"parallax_intensity" : 
+			{
+				"condition" : "settings_section.value == 'camera' && parallax_enabled.value",
+				"index" : 11,
+				"max" : 100,
+				"min" : 0,
+				"order" : 111,
+				"text" : "ui_parallax_intensity",
+				"type" : "slider",
+				"value" : 50
+			},
+			"parallax_invert_x" : 
+			{
+				"condition" : "settings_section.value == 'camera' && parallax_enabled.value",
+				"index" : 13,
+				"order" : 113,
+				"text" : "ui_parallax_invert_x",
+				"type" : "bool",
+				"value" : true
+			},
+			"parallax_invert_y" : 
+			{
+				"condition" : "settings_section.value == 'camera' && parallax_enabled.value",
+				"index" : 14,
+				"order" : 114,
+				"text" : "ui_parallax_invert_y",
+				"type" : "bool",
+				"value" : false
+			},
+			"parallax_jelly" : 
+			{
+				"condition" : "settings_section.value == 'camera' && parallax_enabled.value",
+				"index" : 12,
+				"max" : 100,
+				"min" : 0,
+				"order" : 112,
+				"text" : "ui_parallax_jelly",
+				"type" : "slider",
+				"value" : 50
+			},
+			"pin_panel" : 
+			{
+				"condition" : "settings_section.value == 'interface'",
+				"index" : 17,
+				"order" : 117,
+				"text" : "ui_pin_panel",
+				"type" : "bool",
+				"value" : false
+			},
+			"pin_status" : 
+			{
+				"condition" : "settings_section.value == 'interface'",
+				"index" : 18,
+				"order" : 118,
+				"text" : "ui_pin_status",
+				"type" : "bool",
+				"value" : false
+			},
+			"render_scale" : 
+			{
+				"condition" : "settings_section.value == 'graphics'",
+				"index" : 2,
+				"max" : 150,
+				"min" : 50,
+				"order" : 102,
+				"step" : 5,
+				"text" : "ui_render_scale",
+				"type" : "slider",
+				"value" : 100
+			},
+			"schemecolor" : 
+			{
+				"order" : 0,
+				"text" : "ui_browse_properties_scheme_color",
+				"type" : "color",
+				"value" : "0 0 0"
+			},
+			"screen_displacement" : 
+			{
+				"condition" : "settings_section.value == 'graphics'",
+				"index" : 6,
+				"order" : 106,
+				"text" : "ui_screen_displacement",
+				"type" : "bool",
+				"value" : true
+			},
+			"settings_section" : 
+			{
+				"index" : 0,
+				"options" : 
+				[
+					{
+						"label" : "ui_settings_section_opt_playback",
+						"value" : "playback"
+					},
+					{
+						"label" : "ui_settings_section_opt_interface",
+						"value" : "interface"
+					},
+					{
+						"label" : "ui_settings_section_opt_graphics",
+						"value" : "graphics"
+					},
+					{
+						"label" : "ui_settings_section_opt_camera",
+						"value" : "camera"
+					},
+					{
+						"label" : "ui_settings_section_opt_misc",
+						"value" : "misc"
+					}
+				],
+				"order" : 100,
+				"text" : "ui_settings_section",
+				"type" : "combo",
+				"value" : "playback"
+			},
+			"show_epilepsy_warning" : 
+			{
+				"condition" : "settings_section.value == 'interface'",
+				"index" : 19,
+				"order" : 119,
+				"text" : "ui_show_epilepsy_warning",
+				"type" : "bool",
+				"value" : true
+			},
+			"show_fps" : 
+			{
+				"condition" : "settings_section.value == 'misc'",
+				"index" : 23,
+				"order" : 123,
+				"text" : "ui_show_fps",
+				"type" : "bool",
+				"value" : false
+			},
+			"show_player_platform" : 
+			{
+				"condition" : "settings_section.value == 'graphics'",
+				"index" : 4,
+				"order" : 104,
+				"text" : "ui_show_player_platform",
+				"type" : "bool",
+				"value" : false
+			},
+			"show_ui_hint" : 
+			{
+				"condition" : "settings_section.value == 'interface'",
+				"index" : 20,
+				"order" : 120,
+				"text" : "ui_show_ui_hint",
+				"type" : "bool",
+				"value" : true
+			},
+			"show_walls" : 
+			{
+				"condition" : "settings_section.value == 'graphics'",
+				"index" : 5,
+				"order" : 105,
+				"text" : "ui_show_walls",
+				"type" : "bool",
+				"value" : true
+			},
+			"text" : 
+			{
+				"index" : 1,
+				"order" : 101,
+				"text" : "----------------------------------------------------------"
+			},
+			"text3" : 
+			{
+				"condition" : "settings_section.value == 'graphics'",
+				"index" : 7,
+				"order" : 107,
+				"text" : "ui_note_walls"
+			},
+			"text9" : 
+			{
+				"condition" : "settings_section.value == 'misc'",
+				"index" : 22,
+				"order" : 122,
+				"text" : "ui_note_cache_size"
+			},
+			"ui_language" : 
+			{
+				"condition" : "settings_section.value == 'interface'",
+				"index" : 16,
+				"options" : 
+				[
+					{
+						"label" : "ui_ui_language_opt_auto",
+						"value" : "auto"
+					},
+					{
+						"label" : "ui_ui_language_opt_ru",
+						"value" : "ru"
+					},
+					{
+						"label" : "ui_ui_language_opt_en",
+						"value" : "en"
+					}
+				],
+				"order" : 116,
+				"text" : "ui_ui_language",
+				"type" : "combo",
+				"value" : "auto"
+			},
+			"ui_position" : 
+			{
+				"condition" : "settings_section.value == 'interface'",
+				"index" : 15,
+				"options" : 
+				[
+					{
+						"label" : "ui_ui_position_opt_top-left",
+						"value" : "top-left"
+					},
+					{
+						"label" : "ui_ui_position_opt_top-center",
+						"value" : "top-center"
+					},
+					{
+						"label" : "ui_ui_position_opt_top-right",
+						"value" : "top-right"
+					},
+					{
+						"label" : "ui_ui_position_opt_bottom-left",
+						"value" : "bottom-left"
+					},
+					{
+						"label" : "ui_ui_position_opt_bottom-center",
+						"value" : "bottom-center"
+					},
+					{
+						"label" : "ui_ui_position_opt_bottom-right",
+						"value" : "bottom-right"
+					}
+				],
+				"order" : 115,
+				"text" : "ui_ui_position",
+				"type" : "combo",
+				"value" : "top-center"
+			}
+		},
+		"supportsaudioprocessing" : true
+	},
+	"preview" : "preview.jpg",
+	"title" : "ChroPaper",
+	"type" : "Web",
+	"version" : 0
+}
