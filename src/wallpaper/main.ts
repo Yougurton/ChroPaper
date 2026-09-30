@@ -30,6 +30,7 @@ import {
   setProgress,
   setStatusPinned,
   setTrack,
+  setUiScale,
   hideEpilepsyWarning,
   setFps,
   hideUiHint,
@@ -43,7 +44,8 @@ import { ListenLightshow } from './listen-lightshow';
 import { buildSyncReference, referenceLoudness, SyncAligner, type SyncReference } from './audio-sync';
 import { lookupCover } from './cover-lookup';
 import { alternateTrackNames, nameVariants } from './track-names';
-import { recallSync, rememberSync, rememberSyncOffset } from './sync-memory';
+import { forgetSync, recallSync, rememberSync, rememberSyncOffset } from './sync-memory';
+import { installDebugLog } from './debug-log';
 import { browserMapArchiveCache, initMapArchiveCache } from '../sources/map-archive-cache';
 import { loadBeatSaverMap, searchBeatSaverForTrack, type BeatSaverSearchResult } from './beatsaver-search';
 import { DEFAULT_WALLPAPER_CONTROLS, listenForWallpaperControls, waitForInitialProperties } from './wallpaper-controls';
@@ -146,12 +148,23 @@ const DURATION_WAIT_TIMEOUT_MS = 4000;
 // the new track — Wallpaper Engine's timeline and properties callbacks have no guaranteed order.
 const DURATION_PRE_TITLE_GRACE_MS = 1500;
 const DURATION_WAIT_POLL_MS = 100;
+// A map can be ready (from the cache) before the player has reported any position for the new
+// track: the last reading is still the previous track's, often near its end — starting there put
+// the new map past its own end, where it was taken for finished and dropped. So the start waits
+// this long for a reading of the new track, then assumes the track started at the title change.
+const FRESH_POSITION_WAIT_MS = 2500;
+// A map that "ended" within this long of starting didn't really play out (see reachedEnd).
+const LISTEN_SYNC_MIN_PLAY_MS = 3000;
 // For a track synced before (see sync-memory.ts): a shorter wait, the duration only confirms it.
 const REMEMBERED_DURATION_WAIT_MS = 1500;
 // When a synced map runs out before the player reports the next track, it's held (frozen on its
 // last frame) this long for the next title to show up, rather than dropping straight back to the
 // generated show — which the next track's map would replace again a moment later.
 const LISTEN_SYNC_END_GRACE_MS = 6000;
+// The same when the player's track info disappears altogether while synced (the player's page is
+// being reloaded, say): the map is held this long for the track to come back — the same title then
+// syncs again from the start instead of being taken for the track that was already handled.
+const LISTEN_SYNC_TITLE_LOST_GRACE_MS = 8000;
 // How long a silent stretch has to last before the synced clock is paused (shorter than
 // LISTEN_SILENCE_TIMEOUT_MS, which is for falling back to the generated show entirely when not
 // synced at all — pausing in place is cheap enough to react to quickly).
@@ -165,12 +178,20 @@ const LISTEN_POSITION_ADVANCING_MS = 3000;
 // How long a stretch with no correction needed has to last before sync counts as settled when the
 // audio can't lock it (see refreshSyncStatus).
 const LISTEN_SYNC_CONFIDENT_AFTER_MS = 3000;
-// Screensaver audio handling. These used to be Wallpaper Engine sliders (signal gain, silence
-// threshold, reaction speed, and the media API latency compensation below); they're fixed now, at
-// the values those sliders defaulted to. The generator's own tuning (light density, light offset)
+// Screensaver audio handling. These used to be Wallpaper Engine sliders (reaction speed and the
+// media API latency compensation below); they're fixed now, at the values those sliders defaulted
+// to. The generator's own tuning (light density, light offset)
 // likewise stays at ListenLightshow's defaults.
-const LISTEN_DEFAULT_GAIN = 1;
-const LISTEN_DEFAULT_THRESHOLD = 0.05; // 0..1, raises the floor for what counts as any sound at all
+// What counts as any sound at all (see the audio listener). Relative to how loud the music has been
+// lately, since on some systems Wallpaper Engine captures the audio *after* the system volume: at a
+// low volume a fixed threshold took real music for silence (and a synced map for paused). The
+// floor only has to separate music from the zeros of real silence.
+const LISTEN_SOUND_MIN_LEVEL = 0.002;
+const LISTEN_SOUND_RELATIVE_LEVEL = 0.03;
+// How fast "lately" forgets a louder level (half-life), e.g. after the volume was turned down.
+const LISTEN_SOUND_LEVEL_HALF_LIFE_MS = 20_000;
+// A frame with sound this recent still counts as sound now (frames arrive ~30 times a second).
+const LISTEN_SOUND_FRAME_HOLD_MS = 150;
 const LISTEN_DEFAULT_SMOOTHING = 1; // 0..1, higher reacts faster (1 = no smoothing at all)
 // How stale the player's reported position already is when it reaches us (seconds).
 const LISTEN_API_LATENCY_SECONDS = 1;
@@ -191,6 +212,10 @@ const LISTEN_ALIGN_MIN_SCORE = 0.3;
 // probably cut to a part the map doesn't line up with, and the whole map is searched again.
 const LISTEN_ALIGN_WHOLE_MIN_SCORE = 0.4;
 const LISTEN_ALIGN_LOST_AFTER_MISSES = 3;
+// No lock at all this long after a map started (while the music plays): the reported position is
+// probably off by more than the normal search range (some players — Apple Music in a browser —
+// report positions that run on from earlier tracks), so the whole map is searched instead.
+const LISTEN_ALIGN_WHOLE_AFTER_MS = 20_000;
 const LISTEN_ALIGN_MIN_MARGIN = 0.03;
 const LISTEN_ALIGN_AGREE_SECONDS = 0.05;
 // Smaller corrections than this aren't worth a seek once locked.
@@ -306,14 +331,6 @@ function usesGroupLightingSystem(difficulty: Difficulty): boolean {
   );
 }
 
-interface ListenBands {
-  bass: number;
-  mid: number;
-  treble: number;
-  leftEnergy: number;
-  rightEnergy: number;
-}
-
 /**
  * Measures how much silence the mapper padded onto the *start* of the map's audio file — the
  * standard second or two added in an audio editor so the player has time to get ready. That
@@ -354,30 +371,6 @@ function detectLeadInSeconds(buffer: AudioBuffer): number {
     }
   }
   return 0; // silent for the whole scan: something unusual, don't shift anything
-}
-
-/** audioArray is Wallpaper Engine's raw format: 128 floats, 0-63 = left channel, 64-127 = right,
- *  each channel's own 64 bins going from bass (index 0) to treble (index 63). We only need coarse
- *  bands, not the full 64-bin resolution, so this collapses each channel into three chunks. */
-function computeListenBands(audioArray: number[]): ListenBands {
-  const bandAverage = (offset: number, start: number, end: number) => {
-    let sum = 0;
-    for (let i = start; i < end; i++) sum += Math.min(audioArray[offset + i] ?? 0, 1);
-    return sum / (end - start);
-  };
-  const leftBass = bandAverage(0, 0, 8);
-  const leftMid = bandAverage(0, 8, 32);
-  const leftTreble = bandAverage(0, 32, 64);
-  const rightBass = bandAverage(64, 0, 8);
-  const rightMid = bandAverage(64, 8, 32);
-  const rightTreble = bandAverage(64, 32, 64);
-  return {
-    bass: (leftBass + rightBass) / 2,
-    mid: (leftMid + rightMid) / 2,
-    treble: (leftTreble + rightTreble) / 2,
-    leftEnergy: (leftBass + leftMid + leftTreble) / 3,
-    rightEnergy: (rightBass + rightMid + rightTreble) / 3,
-  };
 }
 
 function setStatus(state: 'playing' | 'error' | 'listening-idle') {
@@ -424,6 +417,7 @@ function logEnvironmentError(context: string, error: { _tag?: string }) {
 }
 
 async function main() {
+  installDebugLog();
   // Applied immediately, before any Wallpaper Engine property has necessarily arrived yet, so the
   // very first frame of static text (button labels, badges) isn't stuck in Russian regardless of
   // what the ui_language property eventually resolves to — the auto-detected language is a
@@ -517,7 +511,6 @@ async function main() {
   let listenUpdateTimer: number | null = null;
   let listenEvents: BasicEvent[] = [];
   let listenStartPerfTime = 0;
-  let listenSmoothedBands: ListenBands = { bass: 0, mid: 0, treble: 0, leftEnergy: 0, rightEnergy: 0 };
   let listenLastAudioActivityTime = 0;
   // When the current stretch of continuous sound began (see LISTEN_UNTITLED_START_MS).
   let listenSoundStreakStart = 0;
@@ -593,6 +586,11 @@ async function main() {
   let listenSyncReference: SyncReference | null = null;
   const listenAligner = new SyncAligner();
   let listenAudioLocked = false;
+  // Whether the audio has placed the map at all since the last reset (a new track, a seek, a
+  // pause). From then on only the audio moves the clock: losing the lock later just widens the
+  // audio search, and the reported position no longer pulls the map back to its own estimate
+  // (which is exactly what the audio corrected — see the soft resync in tickListenMode).
+  let listenAudioFound = false;
   let listenAlignCandidate: number | null = null;
   let listenLastAlignAt = 0;
   // Since when the current lock attempt has been running (see LISTEN_ALIGN_STATUS_TIMEOUT_MS), and
@@ -604,12 +602,17 @@ async function main() {
   let listenSyncDifferentEdit = false;
   // The track the synced map is remembered under (see sync-memory.ts), while synced.
   let listenSyncMemory: { title: string; artist: string; hash: string } | null = null;
-  // Handover (see holdSyncedMap): the previous track's map stays on screen, frozen, while the next
+  // Handover (see holdSyncedMap): the previous track's map stays on screen, still running, while the next
   // track's map is being searched for — the generated show only comes back if that search fails.
   let listenSyncHandover = false;
   // The synced map's difficulty, for re-applying colors when a color setting changes.
   let listenSyncRow: DifficultyRow | null = null;
   let listenSyncHandoverSince = 0;
+  let listenSyncStartedAt = 0;
+  let listenSyncHandoverGraceMs = LISTEN_SYNC_END_GRACE_MS;
+  // The track info went away (see LISTEN_SYNC_TITLE_LOST_GRACE_MS): the next title counts as new
+  // even if it's the same one.
+  let listenTitleLost = false;
   let listenSyncSearching = false;
   let listenAlignMisses = 0;
   let listenAlignLost = false;
@@ -637,10 +640,11 @@ async function main() {
     return { left: colors.environmentLeft, right: colors.environmentRight };
   };
   let listenLastLoggedStyle = '';
-  const listenGain = LISTEN_DEFAULT_GAIN;
-  const listenThreshold = LISTEN_DEFAULT_THRESHOLD;
-  const listenSmoothing = LISTEN_DEFAULT_SMOOTHING;
-  let latestAudioArray: number[] | null = null;
+  // Recent loud level of the captured audio (a slowly sinking peak) and when the last frame with
+  // sound in it arrived — see LISTEN_SOUND_*.
+  let listenRecentPeak = 0;
+  let listenRecentPeakAt = 0;
+  let listenLastSoundFrameAt = 0;
   let mediaTitle = '';
   let mediaArtist = '';
   let mediaGenres = '';
@@ -902,6 +906,15 @@ async function main() {
   /** Combines the last known position report with how much real time has passed since, so we're
    *  not stuck with a stale number by the time a sync search+download actually finishes. Returns
    *  null if the current media player never sends timeline updates at all — not all of them do. */
+  /** estimateCurrentPosition, but only from a reading of the track that's playing now: until the
+   *  player reports one after the title change, the time since that change (see
+   *  FRESH_POSITION_WAIT_MS). */
+  function positionOfThisTrack(): number | null {
+    if (mediaPosition === null) return null;
+    if (mediaPositionUpdatedAt < mediaTitleChangedAt) return (performance.now() - mediaTitleChangedAt) / 1000;
+    return estimateCurrentPosition();
+  }
+
   function estimateCurrentPosition(): number | null {
     if (mediaPosition === null) return null;
     // listenApiLatencySeconds compensates for the position value already being stale by the time
@@ -940,17 +953,19 @@ async function main() {
    *  event types this whole thing is built on don't address at all). Safe to call even when sync
    *  wasn't active. */
   /**
-   * Keeps the synced map on screen, frozen, instead of dropping back to the generated show: at a
+   * Keeps the synced map on screen instead of dropping back to the generated show: at a
    * track change while the next track's map is searched for (a found map then takes over through
    * its own fade, and only a failed search brings the generated show back — see tickListenMode),
    * or when the map runs out just before the player reports the next track (for up to
    * LISTEN_SYNC_END_GRACE_MS). Without this, the screensaver flashed up between two synced maps.
+   * The map keeps running meanwhile (its lights don't freeze while the next one loads); one that ran
+   * out simply stays on its last frame.
    */
-  function holdSyncedMap() {
+  function holdSyncedMap(graceMs = LISTEN_SYNC_END_GRACE_MS) {
     if (!listenSyncActive || listenSyncHandover) return;
     listenSyncHandover = true;
     listenSyncHandoverSince = performance.now();
-    listenSyncClock?.pause();
+    listenSyncHandoverGraceMs = graceMs;
     listenSyncReference = null;
     resetAudioAlignment();
   }
@@ -1036,6 +1051,7 @@ async function main() {
   function resetAudioAlignment() {
     listenAligner.clear();
     listenAudioLocked = false;
+    listenAudioFound = false;
     listenAlignCandidate = null;
     listenLastAlignAt = performance.now();
     listenAlignSince = performance.now();
@@ -1071,7 +1087,9 @@ async function main() {
   /** One audio-alignment step (see audio-sync.ts). Returns true if it moved the clock. */
   function alignSyncToAudio(clock: SongClock): boolean {
     if (listenSyncReference === null) return false;
-    const whole = listenSyncDifferentEdit && (!listenAudioLocked || listenAlignLost);
+    const whole =
+      (listenSyncDifferentEdit && (!listenAudioLocked || listenAlignLost)) ||
+      (!listenAudioFound && performance.now() - listenAlignSince > LISTEN_ALIGN_WHOLE_AFTER_MS);
     const estimate = listenAligner.estimate(
       listenSyncReference,
       whole ? 'whole' : listenAudioLocked ? LISTEN_ALIGN_LOCKED_SEARCH_SECONDS : LISTEN_ALIGN_SEARCH_SECONDS,
@@ -1116,6 +1134,7 @@ async function main() {
       );
     }
     listenAudioLocked = true;
+    listenAudioFound = true;
     listenAlignLost = false;
     const corrected = Math.abs(offset) >= LISTEN_ALIGN_MIN_CORRECTION_SECONDS;
     if (corrected) {
@@ -1239,6 +1258,10 @@ async function main() {
       // already knew to wait for that case specifically. A cached (near-instant) load was if
       // anything hit harder, since there was barely any natural delay for the reading to settle on
       // its own before this ran.
+      for (let waited = 0; mediaPositionUpdatedAt < mediaTitleChangedAt && waited < FRESH_POSITION_WAIT_MS; waited += 100) {
+        await sleep(100);
+        if (token !== listenSyncToken) return;
+      }
       while (performance.now() - listenLastSeekDetectedAt < LISTEN_SEEK_SETTLE_MS) {
         if (token !== listenSyncToken) return;
         await new Promise((resolve) => window.setTimeout(resolve, 100));
@@ -1350,14 +1373,26 @@ async function main() {
       listenLastSoftResyncCheckAt = performance.now();
       listenSyncDifferentEdit = differentEdit;
       listenHandledSeekAt = listenLastSeekDetectedAt;
-      const apiPosition = estimateCurrentPosition() ?? estimatedPosition;
-      const startAt = apiPosition + listenSyncOffsetSeconds + listenSyncLearnedOffset;
+      const apiPosition = positionOfThisTrack() ?? estimatedPosition;
+      let startAt = apiPosition + listenSyncOffsetSeconds + listenSyncLearnedOffset;
+      // A reported position at or past the map's end can't be this track's (Apple Music in a browser
+      // was seen reporting 5:15 of a 4:05 song, the positions running on from earlier tracks):
+      // starting there, the map "ended" at once and was dropped. It's handled like a different edit
+      // instead — the time since the title changed as the first guess, the audio finds the real spot.
+      if (!differentEdit && startAt > clock.duration - 5) {
+        console.log(
+          `[wallpaper] sync: the player's position (${apiPosition.toFixed(1)} s) lies past the map's end — placing it by the audio alone`,
+        );
+        startAt = (performance.now() - mediaTitleChangedAt) / 1000 + listenSyncLearnedOffset;
+        listenSyncDifferentEdit = true;
+      }
       // A different edit: the reported position is only a first guess (it can even lie past the
       // map's end — a 5:39 album version against a 3:56 map); the audio will find the real spot.
-      clock.seek(differentEdit ? Math.min(startAt, Math.max(0, clock.duration - 30)) : startAt);
+      clock.seek(listenSyncDifferentEdit ? Math.min(startAt, Math.max(0, clock.duration - 30)) : startAt);
       clock.play();
       view.setBeatSource(() => clock.currentBeat());
       listenSyncClock = clock;
+      listenSyncStartedAt = performance.now();
       listenSyncActive = true;
       listenSyncHandover = false; // (the previous track's held map, if any, is replaced now)
       document.body.dataset.listenSyncing = 'true';
@@ -1645,8 +1680,12 @@ async function main() {
     // New track? Fall back to the generated show immediately (so there's never a dead frame while
     // we search/download), and kick off a sync attempt in the background if enabled — it'll take
     // over (see listenSyncActive below) if and when it actually succeeds.
-    if (mediaTitle !== '' && mediaTitle !== listenLastSyncTitle) {
-      const previousTitle = listenLastSyncTitle;
+    if (mediaTitle === '' && listenLastSyncTitle !== '') listenTitleLost = true;
+    if (mediaTitle !== '' && (mediaTitle !== listenLastSyncTitle || listenTitleLost)) {
+      // (The same title again after the track info was gone — a reloaded player page — is synced
+      // anew, but isn't a track change: no new random look for it.)
+      const previousTitle = mediaTitle === listenLastSyncTitle ? '' : listenLastSyncTitle;
+      listenTitleLost = false;
       listenLastSyncTitle = mediaTitle;
       const albumKey = mediaAlbum !== '' ? mediaAlbum : mediaArtist;
       listenCoverAlbumChanged = previousTitle !== '' && albumKey !== listenCoverAlbumKey;
@@ -1655,7 +1694,7 @@ async function main() {
       listenOnlineCover = null;
       listenOnlineCoverRequested = false;
       listenShow.startTrack(`${mediaTitle}|${mediaArtist}`, mediaGenres);
-      // With sync on, a synced map stays up (frozen) while the new track's map is searched for —
+      // With sync on, a synced map stays up (still running) while the new track's map is searched for —
       // see holdSyncedMap; the generated show only comes back if that search finds nothing.
       if (listenSyncEnabled) holdSyncedMap();
       else exitSyncMode();
@@ -1684,40 +1723,13 @@ async function main() {
       }
     }
 
-    if (latestAudioArray !== null) {
-      const target = computeListenBands(latestAudioArray);
-      const smoothing = listenSmoothing;
-      listenSmoothedBands = {
-        bass: listenSmoothedBands.bass + (target.bass - listenSmoothedBands.bass) * smoothing,
-        mid: listenSmoothedBands.mid + (target.mid - listenSmoothedBands.mid) * smoothing,
-        treble: listenSmoothedBands.treble + (target.treble - listenSmoothedBands.treble) * smoothing,
-        leftEnergy: listenSmoothedBands.leftEnergy + (target.leftEnergy - listenSmoothedBands.leftEnergy) * smoothing,
-        rightEnergy:
-          listenSmoothedBands.rightEnergy + (target.rightEnergy - listenSmoothedBands.rightEnergy) * smoothing,
-      };
-    }
-    // Gain is applied here, after smoothing — a single knob to compensate if Wallpaper Engine's
-    // captured levels turn out to run quiet or loud in practice (this is exactly the kind of
-    // number I have no way to guess correctly without testing — see the README).
-    const gain = listenGain;
-    const bands: ListenBands = {
-      bass: Math.min(listenSmoothedBands.bass * gain, 1),
-      mid: Math.min(listenSmoothedBands.mid * gain, 1),
-      treble: Math.min(listenSmoothedBands.treble * gain, 1),
-      leftEnergy: Math.min(listenSmoothedBands.leftEnergy * gain, 1),
-      rightEnergy: Math.min(listenSmoothedBands.rightEnergy * gain, 1),
-    };
-
     // Real silence detection, independent of whatever the media API claims — a paused track still
     // reports a title, so relying on the title alone (the first version's approach) meant a paused
-    // song looked like "playing" with nothing actually happening. A small fixed floor here (well
-    // below the visible on/off threshold, which is user-tunable) is deliberately *not* tied to
-    // listen_threshold, since this is only about detecting "is there any sound at all", not about
-    // how visible a light should be.
-    // "Silence threshold" setting raises the floor for what counts as sound at all (default 0).
-    const silenceFloor = 0.02 + listenThreshold * 0.3;
-    const hasSound = bands.bass > silenceFloor || bands.mid > silenceFloor || bands.treble > silenceFloor;
+    // song looked like "playing" with nothing actually happening. Measured per audio frame in the
+    // audio listener, relative to the recent level (so it holds at any system volume) — see
+    // LISTEN_SOUND_*.
     const nowMs = performance.now();
+    const hasSound = nowMs - listenLastSoundFrameAt < LISTEN_SOUND_FRAME_HOLD_MS;
     if (hasSound) {
       if (nowMs - listenLastAudioActivityTime > LISTEN_SOUND_STREAK_GAP_MS) listenSoundStreakStart = nowMs;
       listenLastAudioActivityTime = nowMs;
@@ -1731,9 +1743,11 @@ async function main() {
 
     if (listenSyncActive && !listenSyncHandover) {
       if (mediaTitle === '') {
-        // Media info gone entirely (not just quiet) — nothing to resume back to, so there's no
-        // reason to hold onto the sync state on the chance it comes back.
-        exitSyncMode();
+        // Media info gone entirely (not just quiet): the player's page may just be reloading. The
+        // map is held for a while — if the track comes back it syncs again (from memory, so
+        // without a new search), otherwise the generated show takes over.
+        console.log('[wallpaper] sync: the player stopped reporting a track — holding the map for a while');
+        holdSyncedMap(LISTEN_SYNC_TITLE_LOST_GRACE_MS);
       } else {
         // Paused/resumed in place rather than exiting sync mode on silence: the whole point of
         // syncing is not having to re-search and re-download every time the track is paused for a
@@ -1865,7 +1879,7 @@ async function main() {
     if (listenSyncActive && listenSyncHandover) {
       // Held (see holdSyncedMap): nothing to slave; a map that ran out gives way to the generated
       // show if no next track (and so no search) turned up within the grace period.
-      if (!listenSyncSearching && performance.now() - listenSyncHandoverSince > LISTEN_SYNC_END_GRACE_MS) exitSyncMode();
+      if (!listenSyncSearching && performance.now() - listenSyncHandoverSince > listenSyncHandoverGraceMs) exitSyncMode();
       return;
     }
     if (listenSyncActive && listenSyncClock !== null) {
@@ -1878,7 +1892,9 @@ async function main() {
       // reported) isn't worth the small extra cost of checking twice. Guarded by !listenSyncPaused
       // so our own pause below is never mistaken for the track having ended.
       const reachedEnd =
-        !listenSyncPaused && (!listenSyncClock.isPlaying() || listenSyncClock.currentTime() >= listenSyncClock.duration - 0.1);
+        !listenSyncPaused &&
+        performance.now() - listenSyncStartedAt > LISTEN_SYNC_MIN_PLAY_MS &&
+        (!listenSyncClock.isPlaying() || listenSyncClock.currentTime() >= listenSyncClock.duration - 0.1);
       if (reachedEnd) {
         holdSyncedMap(); // the next track is usually a moment away — see LISTEN_SYNC_END_GRACE_MS
       } else if (!listenSyncPaused) {
@@ -1888,7 +1904,7 @@ async function main() {
         // learned at startup) rather than left to free-run indefinitely — see the README for the
         // full history of why a hard-seek-only version could get stuck slightly wrong after a seek,
         // and why a soft, infrequent correction band was added on top of the immediate one.
-        const target = estimateCurrentPosition();
+        const target = positionOfThisTrack();
         // Right after a detected seek the reported position can still be the transient one (see
         // the timeline listener), so wait for it to settle before trusting it as the reference.
         const settlingAfterSeek = performance.now() - listenLastSeekDetectedAt < LISTEN_SEEK_SETTLE_MS;
@@ -1915,6 +1931,7 @@ async function main() {
               // cost any real responsiveness there — only a glitch fails to reappear and gets
               // ignored, which is exactly the point.
               if (listenPendingHardSeek !== null && Math.abs(listenPendingHardSeek - wanted) < LISTEN_SLAVE_SOFT_RESYNC_SECONDS) {
+                console.log(`[wallpaper] sync: seek detected, clock ${listenSyncClock.currentTime().toFixed(2)} -> ${wanted.toFixed(2)} s`);
                 listenSyncClock.seek(wanted);
                 listenLastSoftResyncCheckAt = now;
                 listenPendingHardSeek = null;
@@ -1925,14 +1942,18 @@ async function main() {
               }
             } else {
               listenPendingHardSeek = null;
-              // Once the audio has locked, this reported-position correction stays out of it: the
-              // readings jitter by more than the lock is accurate to.
+              // Once the audio has placed the map, this reported-position correction stays out of
+              // it for the rest of the track (until a seek/pause resets the alignment) — also after
+              // the lock is lost again: the readings jitter by more than the lock is accurate to,
+              // and the player's report is off by however much the audio corrected in the first
+              // place, so pulling the map back to it undid the audio sync (maps ran early again).
               if (
-                !listenAudioLocked &&
+                !listenAudioFound &&
                 error > LISTEN_SLAVE_SOFT_RESYNC_SECONDS &&
                 now - listenLastSoftResyncCheckAt > LISTEN_SLAVE_SOFT_RESYNC_INTERVAL_MS
               ) {
                 // Only the clock moves here, not the music: the audio collected so far stays valid.
+                console.log(`[wallpaper] sync: following the reported position, clock ${(wanted - listenSyncClock.currentTime()).toFixed(2)} s`);
                 listenAligner.shift(wanted - listenSyncClock.currentTime());
                 listenSyncClock.seek(wanted);
                 listenLastSoftResyncCheckAt = now;
@@ -1967,7 +1988,7 @@ async function main() {
       // Not synced, but the player itself can still report where it is — Wallpaper Engine's
       // media-timeline API works independently of the sync feature, so this is shown whenever it's
       // available rather than being tied to sync being turned on at all.
-      const livePosition = estimateCurrentPosition();
+      const livePosition = positionOfThisTrack();
       if (livePosition !== null && mediaDuration !== null) {
         document.body.dataset.listenHasProgress = 'true';
         setProgress(livePosition, mediaDuration);
@@ -2019,7 +2040,6 @@ async function main() {
   function enterListenMode(options: { keepLook?: boolean } = {}) {
     listenEvents = [];
     listenRebuiltLength = -1;
-    listenSmoothedBands = { bass: 0, mid: 0, treble: 0, leftEnergy: 0, rightEnergy: 0 };
     listenShow.startTrack('', '');
     ambientSegmentEnd = null;
     listenSyncActive = false;
@@ -2078,7 +2098,15 @@ async function main() {
         hasReceivedAnyAudioData = true;
         console.log('[wallpaper] first audio sample received from Wallpaper Engine — audio capture is working');
       }
-      latestAudioArray = audioArray;
+      let framePeak = 0;
+      for (const value of audioArray) if (value > framePeak) framePeak = value;
+      const frameAt = performance.now();
+      listenRecentPeak *= Math.pow(0.5, (frameAt - listenRecentPeakAt) / LISTEN_SOUND_LEVEL_HALF_LIFE_MS);
+      listenRecentPeakAt = frameAt;
+      if (framePeak > listenRecentPeak) listenRecentPeak = framePeak;
+      if (framePeak > Math.max(LISTEN_SOUND_MIN_LEVEL, listenRecentPeak * LISTEN_SOUND_RELATIVE_LEVEL)) {
+        listenLastSoundFrameAt = frameAt;
+      }
       listenShow.addFrame(audioArray, performance.now() / 1000);
       if (listenSyncActive && !listenSyncPaused && !listenSyncHandover && listenSyncClock !== null) {
         // Recorded against the map's file time the clock shows right now, without the manual
@@ -2239,6 +2267,10 @@ async function main() {
     onUiPositionChange: (position) => {
       document.body.dataset.uiPosition = position;
     },
+    onUiScaleChange: (scale) => {
+      // Scales the player, its pills, the toast and the startup notices (see setUiScale).
+      setUiScale(scale);
+    },
     onPinPanelChange: (pinned) => {
       setPanelPinned(pinned);
     },
@@ -2367,9 +2399,11 @@ async function main() {
   initNowPlayingControls({
     onExitSync: () => {
       // The ⏏ button while synced: drop the map for this track and go back to the generated show.
-      // The title stays "seen", so it won't search again until the next track.
+      // The title stays "seen", so it won't search again until the next track. The map is also
+      // forgotten for this track (it's most likely the wrong one), so next time it's searched anew.
       if (!listenSyncActive) return;
       console.log('[wallpaper] sync: left the map by button — back to the generated lightshow');
+      if (listenSyncMemory !== null) forgetSync(listenSyncMemory.title, listenSyncMemory.artist);
       listenSyncToken += 1;
       exitSyncMode();
     },

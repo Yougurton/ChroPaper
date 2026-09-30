@@ -52,9 +52,10 @@ let pillHideTimer: number | null = null;
 let panelIdleTimer: number | null = null;
 let toastHideTimer: number | null = null;
 let previousCoverUrl: string | null = null;
-// public/preview.jpg — Vite copies public/ as-is next to index.html, and base is './', so a plain
-// relative path resolves both in dev and in the built wallpaper.
-const FALLBACK_COVER_URL = 'preview.jpg';
+// public/cover.jpg — Vite copies public/ as-is next to index.html, and base is './', so a plain
+// relative path resolves both in dev and in the built wallpaper. Deliberately not preview.jpg:
+// Wallpaper Engine overwrites that one with the workshop preview when the project is edited there.
+const FALLBACK_COVER_URL = 'cover.jpg';
 let statusPinned = false;
 let panelPinned = false;
 let lastPhase: HudPhase | null = null;
@@ -70,6 +71,38 @@ function formatTime(seconds: number): string {
   const minutes = Math.floor(totalSeconds / 60);
   const secs = totalSeconds % 60;
   return `${String(minutes)}:${secs.toString().padStart(2, '0')}`;
+}
+
+/** "Interface scale": 0.5–3 (1 = normal). The CSS in index.html scales everything of the interface
+ *  with var(--ui-scale); the same rules are also written out here with the plain number in a
+ *  stylesheet of their own, which wins over them — Wallpaper Engine's browser was seen logging the
+ *  new scale while the interface stayed the same size, i.e. not picking up the variable's change. */
+export function setUiScale(scale: number) {
+  document.documentElement.style.setProperty('--ui-scale', String(scale));
+  let override = document.getElementById('ui-scale-override');
+  if (!(override instanceof HTMLStyleElement)) {
+    override = document.createElement('style');
+    override.id = 'ui-scale-override';
+    document.head.appendChild(override);
+  }
+  const rules: string[] = [];
+  for (const sheet of Array.from(document.styleSheets)) {
+    if (sheet.ownerNode === override) continue;
+    let list: CSSRuleList;
+    try {
+      list = sheet.cssRules;
+    } catch {
+      continue;
+    }
+    for (const rule of Array.from(list)) {
+      if (rule instanceof CSSStyleRule && rule.cssText.includes('var(--ui-scale)')) {
+        rules.push(rule.cssText.split('var(--ui-scale)').join(String(scale)));
+      }
+    }
+  }
+  override.textContent = rules.join('\n');
+  const playerTransform = getComputedStyle(byId('now-playing') ?? document.body).transform;
+  console.log(`[wallpaper] interface scale ${String(Math.round(scale * 100))} % (${String(rules.length)} rules, player transform ${playerTransform})`);
 }
 
 /** The FPS counter left of the status pill ("FPS counter" in the settings). null hides it. */
@@ -223,6 +256,8 @@ function panelIsShown() {
  *  image has loaded (briefly waited for), so it doesn't arrive blank. Only while the panel is
  *  visible; otherwise everything is updated at once. */
 export function setTrack(track: TrackMeta | null) {
+  // Only for a real map (it has a BeatSaver id) — the generated show has no mapper to name.
+  setMapperPill(track !== null && track.mapId !== null ? track.mapper : '');
   const title = track?.title ?? '';
   const cover = track?.coverUrl ?? '';
   pendingTrack = track;
@@ -273,6 +308,23 @@ export function setTrack(track: TrackMeta | null) {
   }, SLIDE_OUT_MS);
 }
 
+/** "Map by: …" — a pill of its own right of the status pill, while a map is synced. It shows and
+ *  hides together with the status pill (see the CSS), and slides in the same way when it changes. */
+let shownMapper = '';
+function setMapperPill(mapper: string) {
+  if (mapper === shownMapper) return;
+  shownMapper = mapper;
+  const pill = byId('hud-mapper-pill');
+  const name = byId('hud-mapper-name');
+  if (pill === null || name === null) return;
+  pill.hidden = mapper === '';
+  if (mapper === '') return;
+  name.textContent = mapper;
+  pill.classList.remove('np-pill-in');
+  void pill.offsetWidth;
+  pill.classList.add('np-pill-in');
+}
+
 function applyTrack(track: TrackMeta | null) {
   displayedTitle = track?.title ?? '';
   displayedCover = track?.coverUrl ?? '';
@@ -286,10 +338,12 @@ function applyTrack(track: TrackMeta | null) {
   const chromaEl = byId('np-chroma');
   const noodleEl = byId('np-noodle');
   const coverEl = byId<HTMLImageElement>('np-cover');
-  const copyLinkEl = byId('np-copy-link');
+  const mapLinkEl = byId('np-map-link');
   if (titleEl !== null) titleEl.textContent = track?.title ?? APP_NAME;
   if (mapperEl !== null) {
     if (track === null) renderAppInfo(mapperEl);
+    // A real map names its mapper; for the generated show this line is just the track's artist.
+    else if (track.mapId === null) mapperEl.textContent = track.mapper;
     else mapperEl.textContent = track.mapper !== '' ? t('track_mapper_by', { mapper: track.mapper }) : '';
   }
   if (badgeEl !== null) badgeEl.hidden = track === null || track.environmentSupported;
@@ -300,7 +354,10 @@ function applyTrack(track: TrackMeta | null) {
   if (glsEl !== null) glsEl.hidden = track === null || !track.usesGLS;
   if (chromaEl !== null) chromaEl.hidden = track === null || !track.usesChroma;
   if (noodleEl !== null) noodleEl.hidden = track === null || !track.usesNoodleExtensions;
-  if (copyLinkEl !== null) copyLinkEl.hidden = currentMapId === null;
+  if (mapLinkEl !== null) {
+    mapLinkEl.hidden = currentMapId === null;
+    mapLinkEl.title = t('view_map_title');
+  }
   if (coverEl !== null) {
     const coverUrl = track?.coverUrl ?? null;
     // (Never revoke the URL that's about to be shown again — a repeat setTrack() with the same
@@ -713,7 +770,8 @@ export function initNowPlayingControls(handlers: NowPlayingHandlers) {
     setStatusPinned(!statusPinned);
   });
 
-  byId('np-copy-link')?.addEventListener('click', () => {
+  // "View map": a wallpaper can't open a browser, so the map's BeatSaver link is copied instead.
+  byId('np-map-link')?.addEventListener('click', () => {
     resetPanelIdleTimer();
     if (currentMapId === null) return;
     void copyTextToClipboard(`https://beatsaver.com/maps/${currentMapId}`).then((copied) => {

@@ -33,6 +33,9 @@ const messages = {
     sync_status_download_failed: '⚠ Не удалось скачать карту',
 
     track_mapper_by: 'Карта от: {mapper}',
+    pill_mapper: 'Карта от:',
+    view_map: 'Посмотреть карту',
+    view_map_title: 'Скопировать ссылку на карту на BeatSaver',
 
     link_copied: 'Ссылка на карту скопирована',
     link_copy_failed: 'Не удалось скопировать ссылку',
@@ -82,6 +85,9 @@ const messages = {
     sync_status_download_failed: "⚠ Couldn't download the map",
 
     track_mapper_by: 'Map by: {mapper}',
+    pill_mapper: 'Map by:',
+    view_map: 'View map',
+    view_map_title: 'Copy the BeatSaver link to the map',
 
     link_copied: 'Map link copied',
     link_copy_failed: "Couldn't copy the link",

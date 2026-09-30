@@ -96,6 +96,8 @@ export interface WallpaperControlsHandlers {
   /** "Map cache size" (the "Misc" section), in megabytes. */
   onCacheSizeChange: (megabytes: number) => void;
   onUiPositionChange: (position: string) => void;
+  /** "Interface scale" (the "Interface" section): 0.5–3, 1 = normal size. */
+  onUiScaleChange: (scale: number) => void;
   onPinPanelChange: (pinned: boolean) => void;
   onPinStatusChange: (pinned: boolean) => void;
   onParallaxEnabledChange: (enabled: boolean) => void;
@@ -221,6 +223,10 @@ export function listenForWallpaperControls(handlers: WallpaperControlsHandlers) 
       ) {
         handlers.onUiPositionChange(uiPosition.value);
       }
+
+      // (Number(): a slider's value isn't guaranteed to arrive as a number.)
+      const uiScale = properties.ui_scale === undefined ? Number.NaN : Number(properties.ui_scale.value);
+      if (Number.isFinite(uiScale)) handlers.onUiScaleChange(Math.min(Math.max(uiScale, 50), 300) / 100);
 
       const pinPanelProperty = properties.pin_panel;
       if (typeof pinPanelProperty?.value === 'boolean') {

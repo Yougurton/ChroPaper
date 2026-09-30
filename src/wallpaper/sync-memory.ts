@@ -20,7 +20,19 @@ export interface RememberedSync {
   /** listenSyncLearnedOffset once locked to the audio (null until the first lock). */
   learnedOffset: number | null;
   usedAt: number;
+  /** SEARCH_VERSION of the search that picked the map. */
+  version?: number;
 }
+
+/** Bumped whenever the BeatSaver search itself changes in a way that can pick a different map:
+ *  records from an older search are dropped, and the track is searched afresh once — otherwise a
+ *  map an older, less careful search got wrong would come back from memory forever.
+ *  2: remixes/covers ranked below the song, other-length songs by the same artist not taken.
+ *  3: "Artist- Title" split, other songs merely featuring the artist not taken.
+ *  4: a version in brackets ("Simulation (VIP)") matched against the map's subtitle.
+ *  5: the same with the artist in the title; the best different edit over all searches.
+ *  6: version brackets kept in the title's name variants, every variant searched. */
+const SEARCH_VERSION = 6;
 
 const STORAGE_KEY = 'chropaper.syncMemory';
 const MAX_RECORDS = 400;
@@ -52,7 +64,7 @@ function load(): Store {
       if (value === null || typeof value !== 'object') continue;
       const record = value as Partial<RememberedSync>;
       const entry = parseSavedMapEntries([record.entry])[0];
-      if (entry === undefined) continue;
+      if (entry === undefined || record.version !== SEARCH_VERSION) continue;
       store[key] = {
         entry,
         duration: typeof record.duration === 'number' ? record.duration : null,
@@ -60,6 +72,7 @@ function load(): Store {
         durationConfirmed: record.durationConfirmed === true,
         learnedOffset: typeof record.learnedOffset === 'number' && Number.isFinite(record.learnedOffset) ? record.learnedOffset : null,
         usedAt: typeof record.usedAt === 'number' ? record.usedAt : 0,
+        version: SEARCH_VERSION,
       };
     }
     return store;
@@ -114,6 +127,7 @@ export function rememberSync(
     duration: record.duration ?? (sameMap ? (previous?.duration ?? null) : null),
     learnedOffset: record.learnedOffset !== undefined ? record.learnedOffset : sameMap ? (previous?.learnedOffset ?? null) : null,
     usedAt: Date.now(),
+    version: SEARCH_VERSION,
   };
   save(store);
 }
@@ -125,5 +139,14 @@ export function rememberSyncOffset(title: string, artist: string, hash: string, 
   if (record === undefined || record.entry.hash !== hash) return;
   record.learnedOffset = learnedOffset;
   record.usedAt = Date.now();
+  save(store);
+}
+
+/** Forgets the map remembered for this track (it was the wrong one: the ⏏ button left it). */
+export function forgetSync(title: string, artist: string) {
+  const store = load();
+  const key = trackKey(title, artist);
+  if (store[key] === undefined) return;
+  delete store[key];
   save(store);
 }

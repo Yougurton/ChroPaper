@@ -37,6 +37,11 @@
         width: 100%;
         height: 100%;
       }
+      /* "Interface scale" (the settings; main.ts onUiScaleChange sets it): everything of the interface
+         is scaled from the screen edge/corner it's anchored to, so it stays in place. */
+      :root {
+        --ui-scale: 1;
+      }
       #now-playing {
         position: fixed;
         z-index: 10;
@@ -62,38 +67,48 @@
       body:not([data-ui-position]) #now-playing {
         top: 0;
         left: 50%;
-        transform: translateX(-50%);
+        transform: translateX(-50%) scale(var(--ui-scale));
+        transform-origin: top center;
         justify-content: flex-end;
         align-items: center;
       }
       body[data-ui-position='top-left'] #now-playing {
         top: 0;
         left: 20px;
+        transform: scale(var(--ui-scale));
+        transform-origin: top left;
         justify-content: flex-end;
         align-items: flex-start;
       }
       body[data-ui-position='top-right'] #now-playing {
         top: 0;
         right: 20px;
+        transform: scale(var(--ui-scale));
+        transform-origin: top right;
         justify-content: flex-end;
         align-items: flex-end;
       }
       body[data-ui-position='bottom-center'] #now-playing {
         bottom: 0;
         left: 50%;
-        transform: translateX(-50%);
+        transform: translateX(-50%) scale(var(--ui-scale));
+        transform-origin: bottom center;
         justify-content: flex-start;
         align-items: center;
       }
       body[data-ui-position='bottom-left'] #now-playing {
         bottom: 0;
         left: 20px;
+        transform: scale(var(--ui-scale));
+        transform-origin: bottom left;
         justify-content: flex-start;
         align-items: flex-start;
       }
       body[data-ui-position='bottom-right'] #now-playing {
         bottom: 0;
         right: 20px;
+        transform: scale(var(--ui-scale));
+        transform-origin: bottom right;
         justify-content: flex-start;
         align-items: flex-end;
       }
@@ -107,6 +122,13 @@
         align-items: center;
         gap: 8px;
         max-width: 100%;
+      }
+      /* Left/right layouts line everything up in one row (FPS, sync status, status pill, "Map by"),
+         which may be wider than the player below it: it extends outwards rather than squeezing the
+         title. */
+      body[data-ui-position$='-left'] #now-playing-status,
+      body[data-ui-position$='-right'] #now-playing-status {
+        max-width: none;
       }
       #hud-side {
         display: flex;
@@ -208,9 +230,43 @@
           transform: none;
         }
       }
-      #hud-phase {
+      #hud-phase,
+      .hud-pill-label {
         opacity: 0.7;
         margin-right: 8px;
+      }
+      /* "Map by: …" while a map is synced (hud.ts setMapperPill): the same pill as the status pill,
+         right of it, and shown/hidden together with it. Centered layouts keep the status pill in
+         the middle, so this one hangs off its right side (mirroring #hud-side on the left). */
+      #hud-mapper-pill {
+        flex-shrink: 0;
+        padding: 9px 18px;
+        border-radius: 999px;
+        background: rgb(0 0 0 / 48%);
+        white-space: nowrap;
+        max-width: min(40vw, 320px);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        opacity: 0;
+        transition: opacity 0.25s ease;
+      }
+      #hud-mapper-pill[hidden] {
+        display: none;
+      }
+      #now-playing-pill.visible ~ #hud-mapper-pill,
+      #now-playing-pill.pinned ~ #hud-mapper-pill,
+      body[data-sync-pill='true'] #hud-mapper-pill {
+        opacity: 1;
+      }
+      #hud-mapper-pill.np-pill-in {
+        animation: np-pill-in 0.32s cubic-bezier(0.2, 0.8, 0.2, 1);
+      }
+      body:not([data-ui-position]) #hud-mapper-pill,
+      body[data-ui-position='top-center'] #hud-mapper-pill,
+      body[data-ui-position='bottom-center'] #hud-mapper-pill {
+        position: absolute;
+        left: calc(100% + 8px);
+        top: 0; /* same height as the status pill it sits next to */
       }
       @keyframes hud-load-slide {
         0% {
@@ -367,9 +423,6 @@
       }
       #np-pin-status {
         left: 34px;
-      }
-      #np-copy-link {
-        left: 62px;
       }
       #np-body {
         display: flex;
@@ -556,6 +609,18 @@
       }
       #np-controls button:hover {
         background: rgb(255 255 255 / 20%);
+      }
+      /* "View map" (a synced map only): on the left, right next to the cover, with a caption. */
+      #np-controls #np-map-link {
+        width: auto;
+        margin-right: auto;
+        gap: 6px;
+        padding: 0 12px;
+        font-size: 13px;
+        white-space: nowrap;
+      }
+      #np-controls #np-map-link[hidden] {
+        display: none;
       }
 
       /* "About" card (see #about-view in the markup): opens below the panel (above it in the
@@ -795,7 +860,8 @@
         position: fixed;
         top: 122px;
         left: 50%;
-        transform: translate(-50%, -8px);
+        transform: translate(-50%, -8px) scale(var(--ui-scale));
+        transform-origin: top center;
         z-index: 11;
         max-width: min(75vw, 480px);
         padding: 10px 18px;
@@ -812,7 +878,7 @@
       }
       #toast.visible {
         opacity: 1;
-        transform: translate(-50%, 0);
+        transform: translate(-50%, 0) scale(var(--ui-scale));
       }
       #toast.placed {
         transition:
@@ -822,27 +888,36 @@
           bottom 0.22s ease;
       }
       body[data-ui-position^='bottom'] #toast {
-        transform: translate(-50%, 8px);
+        transform: translate(-50%, 8px) scale(var(--ui-scale));
+        transform-origin: bottom center;
       }
       body[data-ui-position^='bottom'] #toast.visible {
-        transform: translate(-50%, 0);
+        transform: translate(-50%, 0) scale(var(--ui-scale));
       }
       body[data-ui-position$='left'] #toast {
         left: 20px;
-        transform: translate(0, -8px);
+        transform: translate(0, -8px) scale(var(--ui-scale));
+        transform-origin: top left;
       }
       body[data-ui-position$='right'] #toast {
         left: auto;
         right: 20px;
-        transform: translate(0, -8px);
+        transform: translate(0, -8px) scale(var(--ui-scale));
+        transform-origin: top right;
       }
       body[data-ui-position='bottom-left'] #toast,
       body[data-ui-position='bottom-right'] #toast {
-        transform: translate(0, 8px);
+        transform: translate(0, 8px) scale(var(--ui-scale));
+      }
+      body[data-ui-position='bottom-left'] #toast {
+        transform-origin: bottom left;
+      }
+      body[data-ui-position='bottom-right'] #toast {
+        transform-origin: bottom right;
       }
       body[data-ui-position$='left'] #toast.visible,
       body[data-ui-position$='right'] #toast.visible {
-        transform: none;
+        transform: scale(var(--ui-scale));
       }
 
       /* ===== Startup notices (hud.ts showEpilepsyWarning / showUiHint) ===== */
@@ -870,7 +945,8 @@
       #epilepsy-warning {
         top: 33vh;
         left: 50%;
-        transform: translateX(-50%);
+        transform: translateX(-50%) scale(var(--ui-scale));
+        transform-origin: top center;
         width: min(88vw, 520px);
         padding: 18px 22px 16px;
         border-radius: 14px;
@@ -933,32 +1009,43 @@
           transform: translateY(-5px);
         }
       }
+      /* (124px = the 110px tall player area + a gap — the player's height scales with the interface.) */
       body[data-ui-position='top-center'] #ui-hint,
       body:not([data-ui-position]) #ui-hint {
-        top: 124px;
+        top: calc(110px * var(--ui-scale) + 14px);
         left: 50%;
-        transform: translateX(-50%);
+        transform: translateX(-50%) scale(var(--ui-scale));
+        transform-origin: top center;
       }
       body[data-ui-position='top-left'] #ui-hint {
-        top: 124px;
+        top: calc(110px * var(--ui-scale) + 14px);
         left: 20px;
+        transform: scale(var(--ui-scale));
+        transform-origin: top left;
       }
       body[data-ui-position='top-right'] #ui-hint {
-        top: 124px;
+        top: calc(110px * var(--ui-scale) + 14px);
         right: 20px;
+        transform: scale(var(--ui-scale));
+        transform-origin: top right;
       }
       body[data-ui-position='bottom-center'] #ui-hint {
-        bottom: 124px;
+        bottom: calc(110px * var(--ui-scale) + 14px);
         left: 50%;
-        transform: translateX(-50%);
+        transform: translateX(-50%) scale(var(--ui-scale));
+        transform-origin: bottom center;
       }
       body[data-ui-position='bottom-left'] #ui-hint {
-        bottom: 124px;
+        bottom: calc(110px * var(--ui-scale) + 14px);
         left: 20px;
+        transform: scale(var(--ui-scale));
+        transform-origin: bottom left;
       }
       body[data-ui-position='bottom-right'] #ui-hint {
-        bottom: 124px;
+        bottom: calc(110px * var(--ui-scale) + 14px);
         right: 20px;
+        transform: scale(var(--ui-scale));
+        transform-origin: bottom right;
       }
       body[data-ui-position^='bottom'] .ui-hint-arrow::before {
         content: '↓';
@@ -1000,6 +1087,9 @@
         <div id="now-playing-pill">
           <span id="hud-phase"></span><span id="hud-title"></span>
         </div>
+        <div id="hud-mapper-pill" hidden>
+          <span class="hud-pill-label" data-i18n="pill_mapper">Карта от:</span><span id="hud-mapper-name"></span>
+        </div>
       </div>
       <div id="now-playing-expand">
         <div id="now-playing-panel">
@@ -1009,9 +1099,6 @@
               📌
             </button>
             <button id="np-pin-status" class="np-pin" type="button" title="Всегда показывать статус">👁</button>
-            <button id="np-copy-link" class="np-pin" type="button" title="Скопировать ссылку на карту" hidden>
-              🔗
-            </button>
           </div>
           <div id="np-body">
             <div id="np-info">
@@ -1029,6 +1116,7 @@
               <div id="np-progress"><div id="np-progress-track"><div id="np-progress-fill"></div></div></div>
             </div>
             <div id="np-controls">
+              <button id="np-map-link" type="button" hidden><span aria-hidden="true">🔗</span><span data-i18n="view_map">Посмотреть карту</span></button>
               <button id="np-random-env" type="button" title="Случайное окружение">🎲</button>
               <button id="np-exit-sync" type="button" title="Выйти из карты — вернуться к сгенерированному лайтшоу">⏏</button>
             </div>

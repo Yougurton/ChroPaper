@@ -39,6 +39,16 @@ function words(text: string): string[] {
     .filter((word) => word !== '');
 }
 
+/** The singers a track title credits: "マイマイマイ (买买买) [feat. 初音ミク]" → "初音ミク". */
+function featuredIn(trackName: string | undefined): string | undefined {
+  return /\b(?:feat|ft)\b\.?\s*([^)\]]+)/iu.exec(trackName ?? '')?.[1];
+}
+
+/** A track title without its extras ("(买买买)", "[feat. 初音ミク]", "(TV Size)"). */
+function bareTitle(trackName: string | undefined): string {
+  return words((trackName ?? '').replace(/\([^)]*\)|\[[^\]]*\]|（[^）]*）|\s*\b(?:feat|ft)\b\.?.*$/giu, ' ')).join(' ');
+}
+
 function artistOverlaps(mediaArtist: string, names: (string | undefined)[]): boolean {
   const wanted = new Set(words(mediaArtist));
   if (wanted.size === 0) return false;
@@ -81,22 +91,34 @@ async function namesFromSearch(
     const byId = new Map(localized.map((result) => [result.trackId, result]));
     const seen = new Set([`${words(title).join(' ')}|${words(cleanedArtist).join(' ')}`]);
     const wantedTitle = words(title).join(' ');
+    // Compared without the extras in brackets and "feat." credits: "INTERNET ANGEL (feat. Aiobahn
+    // +81)" isn't a song called "Aiobahn +81".
     const related = (name: string | undefined) => {
-      const candidate = words(name ?? '').join(' ');
+      const candidate = bareTitle(name);
       return candidate !== '' && (` ${candidate} `.includes(` ${wantedTitle} `) || ` ${wantedTitle} `.includes(` ${candidate} `));
     };
-    const byArtist = candidates.filter((result) => {
+    const titleRelated = (result: ItunesResult) => related(result.trackName) || related(byId.get(result.trackId)?.trackName);
+    const byArtistAny = candidates.filter((result) => {
       const other = byId.get(result.trackId);
-      return (
-        artistOverlaps(cleanedArtist, [result.artistName, other?.artistName]) &&
-        (related(result.trackName) || related(other?.trackName) || lengthFits(result))
-      );
+      const titleRelated = related(result.trackName) || related(other?.trackName);
+      if (artistOverlaps(cleanedArtist, [result.artistName, other?.artistName])) return titleRelated || lengthFits(result);
+      // A player/channel crediting the singer ("初音ミク - マイマイマイ") matches the song's
+      // "feat. 初音ミク" too — but only with the title matching: a singer sings far too many songs
+      // for the length alone to pick the right one.
+      return artistOverlaps(cleanedArtist, [featuredIn(result.trackName), featuredIn(other?.trackName)]) && titleRelated;
     });
+    // The length alone only decides when no track's title fits: a prolific artist has other songs
+    // of about the same length ("モニタリング" by DECO*27 also brought up ヴァンパイア, 3 minutes
+    // too, and with it the wrong map).
+    const byArtistRelated = byArtistAny.filter(titleRelated);
+    const byArtist = byArtistRelated.length > 0 ? byArtistRelated : byArtistAny;
     // No track by that artist: the most relevant one titled exactly like the query and of the
     // right length still counts — the "artist" is often just a singer credit or a channel
     // ("テトリス / 重音テトSV" is 柊マグネタイト's song, sung by Kasane Teto).
     const exactTitle = candidates.find(
-      (result) => lengthFits(result) && words(result.trackName ?? '').join(' ') === wantedTitle,
+      (result) =>
+        lengthFits(result) &&
+        (words(result.trackName ?? '').join(' ') === wantedTitle || bareTitle(result.trackName) === bareTitle(title)),
     );
     const accepted = byArtist.length > 0 ? byArtist.slice(0, MAX_TRACKS) : exactTitle === undefined ? [] : [exactTitle];
     for (const result of accepted) {
@@ -143,8 +165,14 @@ export async function alternateTrackNames(title: string, artist: string, duratio
 const QUOTED = /「([^」]+)」|『([^』]+)』|"([^"]+)"|“([^”]+)”/gu;
 // Bracketed extras: 【推しの子】, [MV], (Official Video), （TV size）.
 const BRACKETED = /【[^】]*】|\[[^\]]*\]|\([^)]*\)|（[^）]*）|〔[^〕]*〕/gu;
+// A bracket naming the song's version ("(VIP)", "[Remix]", "(Live)") stays with the title: the
+// search tells the versions apart by it (see titleMatchLevel in beatsaver-search.ts).
+const VERSION_TAG = /\b(?:vip|remix|rmx|edit|bootleg|flip|rework|cover|nightcore|sped ?up|slowed|instrumental|acoustic|live|remaster(?:ed)?)\b|リミックス|アレンジ|カバー/iu;
+const keepVersionBrackets = (text: string) => text.replace(BRACKETED, (bracket) => (VERSION_TAG.test(bracket) ? ` ${bracket} ` : ' '));
+const SQUARE_BRACKETED = /【[^】]*】|\[[^\]]*\]|〔[^〕]*〕/gu;
 // Segment separators in "Artist - Title | Channel"-style titles.
-const SEPARATORS = /\s+[-–—~〜]\s+|\s*[|｜/／]\s*|(?<!\d)\s*[:：]\s*(?!\d)/u;
+// (Also "P丸様。- 天天天国地獄国": a dash with a space only after it, right after the artist.)
+const SEPARATORS = /\s+[-–—~〜]\s+|(?<=[^\s\-–—])[-–—]\s+(?=\S)|\s*[|｜/／]\s*|(?<!\d)\s*[:：]\s*(?!\d)/u;
 const HASHTAG = /#([^\s#]+)/gu;
 // Singing voices (Vocaloid, UTAU, Synthesizer V, CeVIO…) that titles credit next to the song.
 const SINGER =
@@ -153,7 +181,7 @@ const SINGER =
 const JUNK_HASHTAG = /^(?:shorts?|anime|アニメ|music|mv|pv|jpop|j-pop|vocaloid|ボカロ|cover|歌ってみた|op|ed|lyrics?|fyp|viral)$/iu;
 // Words that describe the video rather than name the song.
 const NOISE =
-  /ノンクレジット|クレジットなし|オープニング|エンディング|主題歌|挿入歌|テーマ(?:ソング)?|公式|(?:tv ?)?アニメ|映像|歌ってみた|\btv\b|non[- ]?credit(?:ed)?|creditless|official|music ?video|lyrics?(?: video)?|full ver(?:sion)?\.?|tv ?(?:size|ver(?:sion)?\.?)|opening(?: theme)?|ending(?: theme)?|romaji|kanji|歌詞|(?:eng(?:lish)?|rus|esp) ?subs?|subbed|legendado|перевод|\b(?:op|ed)\s*\d+\b|\b(?:mv|pv|op|ed|amv|hd|hq|4k)\d*\b/giu;
+  /ノンクレジット|クレジットなし|オープニング|エンディング|主題歌|挿入歌|テーマ(?:ソング)?|公式|(?:tv ?)?アニメ|映像|歌ってみた|踊ってみた|ダンス(?:ビデオ|動画|ver\.?|バージョン)|dance ?(?:video|ver(?:sion)?\.?)|\btv\b|non[- ]?credit(?:ed)?|creditless|official|music ?video|lyrics?(?: video)?|full ver(?:sion)?\.?|tv ?(?:size|ver(?:sion)?\.?)|opening(?: theme)?|ending(?: theme)?|romaji|kanji|歌詞|(?:eng(?:lish)?|rus|esp) ?subs?|subbed|legendado|перевод|\b(?:op|ed)\s*\d+\b|\b(?:mv|pv|op|ed|amv|hd|hq|4k)\d*\b/giu;
 
 /** A part of the title that is nothing but singing voices ("重音テトSV", "feat. 初音ミク & GUMI") —
  *  not one that merely credits one ("ラビットホール feat. 初音ミク" is the song). */
@@ -188,9 +216,10 @@ export function nameVariants(title: string, artist: string): TrackName[] {
     .map((match) => match[1] ?? '')
     .filter((tag) => tag !== '' && !JUNK_HASHTAG.test(tag));
   const source = normalized.replace(HASHTAG, ' ');
-  // A bracket that isn't just about the video ("[吉田夜世]" — unlike "【MV】" or "(Lyrics)") often
-  // holds the artist too.
-  const bracketed = [...source.matchAll(BRACKETED)]
+  // A bracket that isn't just about the video ("[吉田夜世]" — unlike "【MV】" or "[Lyrics]") often
+  // holds the artist too. Not round ones: "マイマイマイ (买买买)" gives the song's name in another
+  // language, "(Official Video)" is about the video — neither is who made the song.
+  const bracketed = [...source.matchAll(SQUARE_BRACKETED)]
     .map((match) => tidy(match[0].slice(1, -1)))
     // (not a credit like "(feat. Hatsune Miku)" — that's who sings, not whose song it is)
     .filter((text) => text !== '' && !/^(?:feat|ft|cv)\b/iu.test(text) && !isSingerCredit(text));
@@ -201,6 +230,9 @@ export function nameVariants(title: string, artist: string): TrackName[] {
     const t = tidy(variantTitle.replace(/\s*\b(?:feat|ft)\b\.?.*$/iu, '')); // credits belong to the artist
     const a = tidy(variantArtist) || fallbackArtist;
     if (t === '' || words(t).length === 0) return;
+    // Just the artist again ("Aiobahn +81" by Aiobahn +81): not a song title.
+    const artistWords = new Set(words(a));
+    if (words(t).every((word) => artistWords.has(word))) return;
     const id = `${words(t).join(' ')}|${words(a).join(' ')}`;
     if (variants.some((v) => `${words(v.title).join(' ')}|${words(v.artist).join(' ')}` === id)) return;
     variants.push({ title: t, artist: a });
@@ -213,7 +245,7 @@ export function nameVariants(title: string, artist: string): TrackName[] {
     const before = source.slice(0, match.index).replace(BRACKETED, ' ').split(SEPARATORS).pop() ?? '';
     add(quoted, before);
   }
-  const unbracketed = source.replace(QUOTED, ' ').replace(BRACKETED, ' ');
+  const unbracketed = keepVersionBrackets(source.replace(QUOTED, ' '));
   const segments = unbracketed
     .split(SEPARATORS)
     .map(tidy)

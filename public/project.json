@@ -1,4 +1,6 @@
 {
+	"contentrating" : "Everyone",
+	"description" : "ChroPaper is a web wallpaper that turns the music playing on your PC into a Beat Saber lightshow right on your desktop. It's built on [url=https://github.com/Umbranoxio/chroviewer]ChroViewer[/url], a browser-based Beat Saber map viewer. ChroPaper keeps ChroViewer's rendering (environments, lighting, walls and Chroma/Noodle support) and adds what a wallpaper needs: a lightshow generated live from the audio, syncing with real BeatSaver maps, a compact player and settings in Wallpaper Engine.\n\n[h2]Features[/h2]\n[list]\n[*][b]Beat Saber environments.[/b] More than 30 environments from the game, with live lighting, rings and mirrors.\n[*][b]Chroma, Noodle Extensions and V3.[/b] Enhanced lighting and advanced environments.\n[*][b]Lightshow from your music.[/b] The wallpaper follows the tempo and beats of whatever plays on your computer and lights it the way a mapper would; a calm idle show runs when nothing plays.\n[*][b]Sync with BeatSaver maps.[/b] When a map exists for the playing track, its real lightshow is shown, lined up with the music by the audio itself. Tracks synced before start from the cache without any server request.\n[*][b]Compact player.[/b] Current track and cover; it opens when you hover over it.\n[/list]\n\n[hr][/hr]\n\nChroPaper — веб-обои, которые превращают музыку, играющую на компьютере, в световое шоу Beat Saber прямо на рабочем столе. Проект построен на [url=https://github.com/Umbranoxio/chroviewer]ChroViewer[/url], браузерном просмотрщике карт Beat Saber. От ChroViewer взят рендер: окружения, свет, стены, поддержка Chroma и Noodle. Сверху добавлено то, что нужно обоям: лайтшоу, которое строится из звука на лету, синхронизация с настоящими картами с BeatSaver, компактный плеер и настройки Wallpaper Engine.\n\n[h2]Особенности[/h2]\n[list]\n[*][b]Окружения Beat Saber.[/b] Больше 30 окружений из игры с живым светом, кольцами и зеркалами.\n[*][b]Chroma, Noodle Extensions и V3.[/b] Улучшенное освещение и продвинутые окружения.\n[*][b]Лайтшоу из вашей музыки.[/b] Обои следят за темпом и битом того, что играет на компьютере, и освещает трек так, как это сделал бы маппер. Когда ничего не играет, идёт спокойное фоновое шоу.\n[*][b]Синхронизация с картами BeatSaver.[/b] Если для играющего трека есть карта, показывается её настоящее лайтшоу, выровненное по самому звуку. Уже синхронизированные треки запускаются из кеша без обращения к серверу.\n[*][b]Компактный плеер.[/b] Текущий трек и обложка, открывается при наведении курсора.\n[/list]\n\n[hr][/hr]\n\nGitHub: [url=https://github.com/Yougurton/ChroPaper]github.com/Yougurton/ChroPaper[/url]",
 	"file" : "index.html",
 	"general" : 
 	{
@@ -16,8 +18,8 @@
 				"ui_listen_colors_opt_custom" : "My colors",
 				"ui_listen_colors_opt_default" : "Environment / map colors",
 				"ui_listen_colors_opt_random" : "Random on track change",
-				"ui_listen_colors_synced" : "Also for synced maps (without their own colors, Chroma or V3)",
-				"ui_listen_environment" : "Screensaver environment",
+				"ui_listen_colors_synced" : "Also for synced maps (except Chroma, V3 and colors changed by the mapper)",
+				"ui_listen_environment" : "Environment",
 				"ui_listen_environment_opt_BTSEnvironment" : "BTS",
 				"ui_listen_environment_opt_BigMirrorEnvironment" : "Big Mirror",
 				"ui_listen_environment_opt_CrabRaveEnvironment" : "Crab Rave",
@@ -66,7 +68,7 @@
 				"ui_settings_section_opt_graphics" : "Graphics",
 				"ui_settings_section_opt_interface" : "Interface",
 				"ui_settings_section_opt_misc" : "Misc",
-				"ui_settings_section_opt_playback" : "Screensaver",
+				"ui_settings_section_opt_playback" : "General",
 				"ui_show_epilepsy_warning" : "Photosensitivity warning on startup",
 				"ui_show_fps" : "FPS counter",
 				"ui_show_player_platform" : "Show player platform",
@@ -82,7 +84,8 @@
 				"ui_ui_position_opt_bottom-right" : "Bottom right",
 				"ui_ui_position_opt_top-center" : "Top center",
 				"ui_ui_position_opt_top-left" : "Top left",
-				"ui_ui_position_opt_top-right" : "Top right"
+				"ui_ui_position_opt_top-right" : "Top right",
+				"ui_ui_scale" : "Interface scale, %"
 			},
 			"ru-ru" : 
 			{
@@ -95,8 +98,8 @@
 				"ui_listen_colors" : "Цвета света",
 				"ui_listen_colors_opt_custom" : "Свои цвета",
 				"ui_listen_colors_opt_default" : "Цвета окружения / карты",
-				"ui_listen_colors_opt_random" : "Случайные при смене трека",
-				"ui_listen_colors_synced" : "Также для синхронизированных карт (Кроме Chroma, V3 и уже заданных картографом цветов)",
+				"ui_listen_colors_opt_random" : "Случайные цвета при смене трека",
+				"ui_listen_colors_synced" : "Также для синхронизированных карт (Кроме Chroma, V3 и цветов измененных картографом)",
 				"ui_listen_environment" : "Окружение",
 				"ui_listen_environment_opt_BTSEnvironment" : "BTS",
 				"ui_listen_environment_opt_BigMirrorEnvironment" : "Big Mirror",
@@ -162,7 +165,8 @@
 				"ui_ui_position_opt_bottom-right" : "Снизу справа",
 				"ui_ui_position_opt_top-center" : "Сверху по центру",
 				"ui_ui_position_opt_top-left" : "Сверху слева",
-				"ui_ui_position_opt_top-right" : "Сверху справа"
+				"ui_ui_position_opt_top-right" : "Сверху справа",
+				"ui_ui_scale" : "Масштаб интерфейса, %"
 			}
 		},
 		"properties" : 
@@ -170,10 +174,10 @@
 			"cache_size" : 
 			{
 				"condition" : "settings_section.value == 'misc'",
-				"index" : 21,
+				"index" : 22,
 				"max" : 20480,
 				"min" : 256,
-				"order" : 121,
+				"order" : 122,
 				"step" : 256,
 				"text" : "ui_cache_size",
 				"type" : "slider",
@@ -204,10 +208,10 @@
 			"fps_limit" : 
 			{
 				"condition" : "settings_section.value == 'misc'",
-				"index" : 24,
+				"index" : 25,
 				"max" : 240,
 				"min" : 30,
-				"order" : 124,
+				"order" : 125,
 				"step" : 1,
 				"text" : "ui_fps_limit",
 				"type" : "slider",
@@ -216,8 +220,8 @@
 			"listen_color_left" : 
 			{
 				"condition" : "settings_section.value == 'playback' && listen_colors.value == 'custom'",
-				"index" : 28,
-				"order" : 128,
+				"index" : 29,
+				"order" : 129,
 				"text" : "ui_listen_color_left",
 				"type" : "color",
 				"value" : "0.7843 0.0784 0.0784"
@@ -225,8 +229,8 @@
 			"listen_color_right" : 
 			{
 				"condition" : "settings_section.value == 'playback' && listen_colors.value == 'custom'",
-				"index" : 29,
-				"order" : 129,
+				"index" : 30,
+				"order" : 130,
 				"text" : "ui_listen_color_right",
 				"type" : "color",
 				"value" : "0.1569 0.5569 0.8235"
@@ -234,7 +238,7 @@
 			"listen_colors" : 
 			{
 				"condition" : "settings_section.value == 'playback'",
-				"index" : 27,
+				"index" : 28,
 				"options" : 
 				[
 					{
@@ -250,7 +254,7 @@
 						"value" : "custom"
 					}
 				],
-				"order" : 127,
+				"order" : 128,
 				"text" : "ui_listen_colors",
 				"type" : "combo",
 				"value" : "default"
@@ -258,8 +262,8 @@
 			"listen_colors_synced" : 
 			{
 				"condition" : "settings_section.value == 'playback' && listen_colors.value != 'default'",
-				"index" : 30,
-				"order" : 130,
+				"index" : 31,
+				"order" : 131,
 				"text" : "ui_listen_colors_synced",
 				"type" : "bool",
 				"value" : false
@@ -267,7 +271,7 @@
 			"listen_environment" : 
 			{
 				"condition" : "settings_section.value == 'playback' && listen_random_environment.value == false",
-				"index" : 26,
+				"index" : 27,
 				"options" : 
 				[
 					{
@@ -363,7 +367,7 @@
 						"value" : "HalloweenEnvironment"
 					}
 				],
-				"order" : 126,
+				"order" : 127,
 				"text" : "ui_listen_environment",
 				"type" : "combo",
 				"value" : "BigMirrorEnvironment"
@@ -371,8 +375,8 @@
 			"listen_random_environment" : 
 			{
 				"condition" : "settings_section.value == 'playback'",
-				"index" : 25,
-				"order" : 125,
+				"index" : 26,
+				"order" : 126,
 				"text" : "ui_listen_random_environment",
 				"type" : "bool",
 				"value" : false
@@ -380,8 +384,8 @@
 			"listen_sync_enabled" : 
 			{
 				"condition" : "settings_section.value == 'playback'",
-				"index" : 31,
-				"order" : 131,
+				"index" : 32,
+				"order" : 132,
 				"text" : "ui_listen_sync_enabled",
 				"type" : "bool",
 				"value" : true
@@ -389,10 +393,10 @@
 			"listen_sync_offset" : 
 			{
 				"condition" : "settings_section.value == 'playback' && listen_sync_enabled.value",
-				"index" : 32,
+				"index" : 33,
 				"max" : 20,
 				"min" : -20,
-				"order" : 132,
+				"order" : 133,
 				"text" : "ui_listen_sync_offset",
 				"type" : "slider",
 				"value" : 0
@@ -400,8 +404,8 @@
 			"listen_sync_rich_maps" : 
 			{
 				"condition" : "settings_section.value == 'playback' && listen_sync_enabled.value",
-				"index" : 33,
-				"order" : 133,
+				"index" : 34,
+				"order" : 134,
 				"text" : "ui_listen_sync_rich_maps",
 				"type" : "bool",
 				"value" : true
@@ -486,8 +490,8 @@
 			"pin_panel" : 
 			{
 				"condition" : "settings_section.value == 'interface'",
-				"index" : 17,
-				"order" : 117,
+				"index" : 18,
+				"order" : 118,
 				"text" : "ui_pin_panel",
 				"type" : "bool",
 				"value" : false
@@ -495,8 +499,8 @@
 			"pin_status" : 
 			{
 				"condition" : "settings_section.value == 'interface'",
-				"index" : 18,
-				"order" : 118,
+				"index" : 19,
+				"order" : 119,
 				"text" : "ui_pin_status",
 				"type" : "bool",
 				"value" : false
@@ -518,7 +522,7 @@
 				"order" : 0,
 				"text" : "ui_browse_properties_scheme_color",
 				"type" : "color",
-				"value" : "0 0 0"
+				"value" : "0.5647058823529412 0.11372549019607843 0.11372549019607843"
 			},
 			"screen_displacement" : 
 			{
@@ -563,8 +567,8 @@
 			"show_epilepsy_warning" : 
 			{
 				"condition" : "settings_section.value == 'interface'",
-				"index" : 19,
-				"order" : 119,
+				"index" : 20,
+				"order" : 120,
 				"text" : "ui_show_epilepsy_warning",
 				"type" : "bool",
 				"value" : true
@@ -572,8 +576,8 @@
 			"show_fps" : 
 			{
 				"condition" : "settings_section.value == 'misc'",
-				"index" : 23,
-				"order" : 123,
+				"index" : 24,
+				"order" : 124,
 				"text" : "ui_show_fps",
 				"type" : "bool",
 				"value" : false
@@ -590,8 +594,8 @@
 			"show_ui_hint" : 
 			{
 				"condition" : "settings_section.value == 'interface'",
-				"index" : 20,
-				"order" : 120,
+				"index" : 21,
+				"order" : 121,
 				"text" : "ui_show_ui_hint",
 				"type" : "bool",
 				"value" : true
@@ -621,14 +625,14 @@
 			"text9" : 
 			{
 				"condition" : "settings_section.value == 'misc'",
-				"index" : 22,
-				"order" : 122,
+				"index" : 23,
+				"order" : 123,
 				"text" : "ui_note_cache_size"
 			},
 			"ui_language" : 
 			{
 				"condition" : "settings_section.value == 'interface'",
-				"index" : 16,
+				"index" : 17,
 				"options" : 
 				[
 					{
@@ -644,7 +648,7 @@
 						"value" : "en"
 					}
 				],
-				"order" : 116,
+				"order" : 117,
 				"text" : "ui_ui_language",
 				"type" : "combo",
 				"value" : "auto"
@@ -684,12 +688,28 @@
 				"text" : "ui_ui_position",
 				"type" : "combo",
 				"value" : "top-center"
+			},
+			"ui_scale" : 
+			{
+				"condition" : "settings_section.value == 'interface'",
+				"index" : 16,
+				"max" : 300,
+				"min" : 50,
+				"order" : 116,
+				"step" : 5,
+				"text" : "ui_ui_scale",
+				"type" : "slider",
+				"value" : 100
 			}
 		},
 		"supportsaudioprocessing" : true
 	},
-	"preview" : "preview.jpg",
+	"preview" : "preview.gif",
+	"ratingsex" : "none",
+	"ratingviolence" : "none",
+	"tags" : [ "Music" ],
 	"title" : "ChroPaper",
-	"type" : "Web",
-	"version" : 0
+	"type" : "web",
+	"version" : 0,
+	"workshopid" : "3809728337"
 }

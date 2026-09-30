@@ -6,6 +6,7 @@ import { fetchBeatSaverHash } from '../sources/beatsaver/provider';
 import { requestJson } from '../sources/http';
 import { browserMapArchiveCache } from '../sources/map-archive-cache';
 import type { MapSourceFile } from '../sources/source-types';
+import { hasOnlyKana, toRomaji } from './kana';
 
 /**
  * BeatSaver side of sync mode: finds the map for the track playing on the PC (searchBeatSaverForTrack)
@@ -257,6 +258,12 @@ function containsWords(outer: string, inner: string): boolean {
  *  a different version — "Cheat Codes" + "VIP"); 1 = one title merely contains the other ("Coast"
  *  vs "West Coast"); 0 = no match. Players that put the artist into the title ("Dxrk - RAVE") are
  *  handled by stripping artist words from the player's title before comparing. */
+/** normalizeForMatch, but keeping the words inside brackets: "Simulation (VIP)" → "simulation vip",
+ *  so it equals a map whose subtitle says "VIP" without brackets. (Still without "feat." credits.) */
+function normalizeKeepingBrackets(text: string): string {
+  return normalizeForMatch(text.replace(/[()[\]【】（）]/g, ' ').replace(/\b(?:feat|ft|prod)\b\.?[^()[\]【】（）]*/giu, ' '));
+}
+
 function titleMatchLevel(doc: MapDoc, mediaTitle: string, mediaArtist: string): 0 | 1 | 2 | 3 {
   // Compared as romajiKey()s, so "seisyun complex" equals "Seishun Complex".
   const media = romajiKey(normalizeForMatch(mediaTitle));
@@ -268,13 +275,30 @@ function titleMatchLevel(doc: MapDoc, mediaTitle: string, mediaArtist: string): 
   );
   const strippedWords = media.split(' ').filter((word) => !artistWords.has(word));
   const mediaStripped = strippedWords.length > 0 ? strippedWords.join(' ') : media;
-  const same = (name: string) => name !== '' && (name === media || name === mediaStripped);
+  // A title in kana also matches its romanization, spaces aside ("マイマイマイ" = "Mai Mai Mai").
+  const spaceless = (text: string) => text.replace(/ /g, '');
+  const kanaReading = hasOnlyKana(media) ? spaceless(romajiKey(toRomaji(media))) : null;
+  const same = (name: string) =>
+    name !== '' && (name === media || name === mediaStripped || (kanaReading !== null && spaceless(name) === kanaReading));
   const songName = romajiKey(normalizeForMatch(doc.metadata.songName));
   const fullName = romajiKey(normalizeForMatch(`${doc.metadata.songName} ${doc.metadata.songSubName}`));
+  // The version in brackets counts on both sides: "Simulation (VIP)" is exactly "Simulation" +
+  // "VIP" (and exactly "Simulation (VIP)"), but only a song-name match for the original "Simulation".
+  // (Artist words left out here too: "Virtual Riot - Simulation (VIP)".)
+  const mediaWithVersion = romajiKey(normalizeKeepingBrackets(mediaTitle));
+  const versionWords = mediaWithVersion.split(' ').filter((word) => word !== '' && !artistWords.has(word));
+  const mediaWithVersionStripped = versionWords.length > 0 ? versionWords.join(' ') : mediaWithVersion;
+  const fullWithVersion = romajiKey(normalizeKeepingBrackets(`${doc.metadata.songName} ${doc.metadata.songSubName}`));
+  if (mediaWithVersion !== media && (fullWithVersion === mediaWithVersion || fullWithVersion === mediaWithVersionStripped)) return 3;
   if (same(fullName)) return 3;
   if (same(songName)) return 2;
   if ([songName, fullName].some((name) => containsWords(media, name) || containsWords(name, mediaStripped))) return 1;
   return 0;
+}
+
+/** An "artist" that is just a singing voice ("初音ミク") — a search for it finds thousands of maps. */
+function isSingerOnly(normalizedArtist: string): boolean {
+  return /^(?:初音ミク|重音テト(?:sv)?|鏡音(?:リン|レン)|巡音ルカ|gumi|ia|kaito|meiko|hatsune miku|kasane teto)$/u.test(normalizedArtist);
 }
 
 function artistMatches(doc: MapDoc, mediaArtist: string, mediaTitle: string): boolean {
@@ -337,18 +361,22 @@ export async function searchBeatSaverForTrack(
     if (/[stzj]y[aueo]/.test(cleanTitle)) {
       queries.splice(1, 0, `${toHepburn(cleanTitle)} ${toHepburn(cleanArtist)}`.trim());
     }
+    // A title in kana alone may be mapped only under its romanization, which BeatSaver's search
+    // can't guess the spacing of ("マイマイマイ" is "Mai Mai Mai"): the artist's maps are searched
+    // too, and titleMatchLevel compares the reading.
+    if (hasOnlyKana(cleanTitle) && cleanArtist !== '' && !isSingerOnly(cleanArtist)) queries.push(cleanArtist);
     return queries.filter((query) => query !== '');
   };
   const durationLabel = expectedDurationSeconds === null ? 'unknown' : `${String(Math.round(expectedDurationSeconds))}s`;
   const describe = (doc: MapDoc) =>
     `${doc.id} "${doc.metadata.songName}" by ${doc.metadata.songAuthorName} (${String(doc.metadata.duration ?? '?')}s)`;
-  let otherEdit: MapDoc | null = null;
+  let otherEdit: ScoredDoc | null = null;
   let best: ScoredDoc | null = null;
   const tried = new Set<string>();
   /** Runs the searches for one name of the song, until one of them finds a match. `knownArtists`
    *  is what candidates' artists are checked against (defaults to `artist`). */
-  const searchName = async (title: string, artist: string, knownArtists = artist): Promise<ScoredDoc | null> => {
-    for (const query of queriesFor(title, artist)) {
+  const searchName = async (title: string, artist: string, knownArtists = artist, maxQueries = Infinity): Promise<ScoredDoc | null> => {
+    for (const query of queriesFor(title, artist).slice(0, maxQueries)) {
       if (tried.has(query)) continue;
       tried.add(query);
       const found = await searchOnce(query, title, knownArtists, expectedDurationSeconds, excludeRichEnvironments);
@@ -357,11 +385,13 @@ export async function searchBeatSaverForTrack(
           found.match !== null
             ? describe(found.match.doc)
             : found.otherEdit !== null
-              ? `only a different edit: ${describe(found.otherEdit)}`
+              ? `only a different edit: ${describe(found.otherEdit.doc)}`
               : 'no plausible match'
         }`,
       );
-      otherEdit ??= found.otherEdit;
+      // The best different edit over all the searches, not just the first one found — a later
+      // search (another name of the song) may turn up a better map of it.
+      if (found.otherEdit !== null && (otherEdit === null || found.otherEdit.score > otherEdit.score)) otherEdit = found.otherEdit;
       if (found.match === null) continue;
       if (best === null || found.match.score > best.score) best = found.match;
       return found.match;
@@ -374,11 +404,12 @@ export async function searchBeatSaverForTrack(
     console.log(`[wallpaper] sync: the title may name ${variants.slice(1).map((name) => `"${name.title}" by ${name.artist}`).join(', ')}`);
   }
   let matchedVariant: { title: string; artist: string } | null = null;
+  // After a match, the other names are still tried — once each (their first query): the first
+  // search can miss the best map of the song ("Virtual Riot - Simulation (VIP)" with the channel
+  // "Disciple" found only the plain map; "Simulation (VIP)" by Virtual Riot finds the V3 one too).
   for (const variant of variants) {
-    if ((await searchName(variant.title, variant.artist)) !== null) {
-      matchedVariant = variant;
-      break;
-    }
+    const found = await searchName(variant.title, variant.artist, variant.artist, matchedVariant === null ? Infinity : 1);
+    if (found !== null && matchedVariant === null) matchedVariant = variant;
   }
   if (names?.alternateNames !== undefined) {
     // The song's names in other languages are searched too — also when a map was already found:
@@ -404,8 +435,10 @@ export async function searchBeatSaverForTrack(
     const entry = beatSaverEntryFromDoc(chosen.doc);
     return entry === null ? null : { entry, durationConfirmed: expectedDurationSeconds !== null, differentEdit: false };
   }
-  if (otherEdit === null) return null;
-  const entry = beatSaverEntryFromDoc(otherEdit);
+  const chosenEdit = otherEdit as ScoredDoc | null; // (assigned inside searchName, see above)
+  if (chosenEdit === null) return null;
+  console.log(`[wallpaper] sync: best different edit ${describe(chosenEdit.doc)}`);
+  const entry = beatSaverEntryFromDoc(chosenEdit.doc);
   return entry === null ? null : { entry, durationConfirmed: false, differentEdit: true };
 }
 
@@ -416,6 +449,19 @@ interface ScoredDoc {
 
 const DURATION_TOLERANCE_SECONDS = 8;
 
+// Words marking another version of a song: its name matches once brackets are ignored
+// ("Monitoring (Best Friend Remix)"), but it's not what plays unless the player says so too.
+const VERSION_WORDS = /\b(?:remix|rmx|cover|covered|nightcore|sped ?up|slowed|instrumental|inst|vip|mashup|bootleg|rework|flip|remaster(?:ed)?|acoustic|live|piano|orchestral|8 ?bit|chiptune)\b|アレンジ|リミックス|カバー|歌ってみた/giu;
+
+/** Pushes other versions of the song (a remix, a cover…) below the song itself when the player's
+ *  title doesn't name that version: bigger than the quality range, smaller than a title tier. */
+function versionPenalty(doc: MapDoc, mediaTitle: string): number {
+  const mapWords = new Set((`${doc.metadata.songName} ${doc.metadata.songSubName}`.normalize('NFKC').match(VERSION_WORDS) ?? []).map((word) => word.toLowerCase()));
+  if (mapWords.size === 0) return 0;
+  const mediaWords = new Set((mediaTitle.normalize('NFKC').match(VERSION_WORDS) ?? []).map((word) => word.toLowerCase()));
+  return [...mapWords].some((word) => !mediaWords.has(word)) ? 100 : 0;
+}
+
 /** One search request plus the candidate filtering described on searchBeatSaverForTrack: the best
  *  match, and separately the best map of a different edit of the same song. */
 async function searchOnce(
@@ -424,7 +470,7 @@ async function searchOnce(
   mediaArtist: string,
   expectedDurationSeconds: number | null,
   excludeRichEnvironments: boolean,
-): Promise<{ match: ScoredDoc | null; otherEdit: MapDoc | null }> {
+): Promise<{ match: ScoredDoc | null; otherEdit: ScoredDoc | null }> {
   const result = await requestJson(
     `${env.VITE_BEATSAVER_API_URL}/search/text/0?q=${encodeURIComponent(query)}&order=Relevance&pageSize=20`,
     mapPageSchema,
@@ -444,7 +490,7 @@ async function searchOnce(
     // Title tiers are spaced wider than the quality range (0-80), so a better map can pick
     // between maps of the same song, but never beats the exact version over e.g. a VIP/remix.
     const titleScore = title === 3 ? 260 : title === 2 ? 150 : 40;
-    const score = titleScore + (artist ? 20 : 0) + scoreByLightshowRichness(doc);
+    const score = titleScore + (artist ? 20 : 0) + scoreByLightshowRichness(doc) - versionPenalty(doc, mediaTitle);
     if (expectedDurationSeconds !== null) {
       const duration = doc.metadata.duration;
       if (duration === undefined || Math.abs(duration - expectedDurationSeconds) > DURATION_TOLERANCE_SECONDS) {
@@ -456,7 +502,7 @@ async function searchOnce(
     }
     if (best === null || score > best.score) best = { doc, score };
   }
-  return { match: best, otherEdit: bestOtherEdit?.doc ?? null };
+  return { match: best, otherEdit: bestOtherEdit };
 }
 
 /** Downloads a map's files (or reads them from the map cache, where it's also saved). onProgress is
