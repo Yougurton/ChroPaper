@@ -619,8 +619,203 @@
         font-size: 13px;
         white-space: nowrap;
       }
-      #np-controls #np-map-link[hidden] {
+      #np-controls #np-map-link[hidden],
+      #np-controls #np-versions-toggle[hidden] {
         display: none;
+      }
+      #np-controls #np-versions-toggle.active {
+        background: rgb(120 170 255 / 45%);
+      }
+
+      /* "Other versions" (☰): below the panel (above it in the bottom layouts), in place of "About",
+         with the same fade-and-slide. */
+      #versions-view {
+        position: relative;
+        display: none;
+        flex-direction: column;
+        width: 100%;
+        box-sizing: border-box;
+        border-radius: 12px;
+        border: 1px solid rgb(255 255 255 / 9%);
+        background: rgb(12 12 16 / 94%);
+        box-shadow: 0 10px 28px rgb(0 0 0 / 38%);
+        text-align: left;
+        overflow: hidden;
+      }
+      #versions-view.expanded {
+        display: flex;
+        animation: about-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+      }
+      #versions-view.closing {
+        animation: about-out 0.18s ease both;
+      }
+      body[data-ui-position^='bottom'] #versions-view.expanded {
+        animation-name: about-in-up;
+      }
+      body[data-ui-position^='bottom'] #versions-view.closing {
+        animation-name: about-out-down;
+      }
+      .versions-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 12px 12px 8px 14px;
+      }
+      .versions-header .about-close {
+        position: static;
+        flex-shrink: 0;
+      }
+      .versions-title {
+        font-size: 14px;
+        font-weight: 600;
+      }
+      .versions-hint {
+        margin-top: 2px;
+        font-size: 11px;
+        opacity: 0.55;
+      }
+      /* About 5 rows; ▲/▼ appear when there are more (Wallpaper Engine passes no mouse wheel). */
+      #versions-list {
+        max-height: 300px;
+        overflow-x: hidden;
+        overflow-y: auto;
+        padding: 2px 8px 8px;
+        scrollbar-width: thin;
+      }
+      .versions-scroll-btn {
+        flex: 0 0 auto;
+        width: 100%;
+        padding: 3px 0;
+        border: none;
+        background: rgb(255 255 255 / 6%);
+        color: rgb(255 255 255 / 70%);
+        font-size: 11px;
+        cursor: pointer;
+      }
+      .versions-scroll-btn[hidden] {
+        display: none;
+      }
+      .versions-scroll-btn:hover {
+        background: rgb(255 255 255 / 14%);
+        color: rgb(255 255 255 / 95%);
+      }
+      .version-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 7px 8px;
+        border-radius: 8px;
+      }
+      .version-row {
+        cursor: pointer;
+      }
+      .version-row.current.pinned {
+        cursor: default;
+      }
+      .version-row:hover {
+        background: rgb(255 255 255 / 6%);
+      }
+      .version-row.current {
+        background: rgb(120 170 255 / 22%);
+      }
+      .version-row-in {
+        animation: np-slide-in 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+      }
+      .version-row.dimmed .version-cover,
+      .version-row.dimmed .version-text {
+        opacity: 0.55;
+      }
+      .version-cover {
+        width: 36px;
+        height: 36px;
+        border-radius: 5px;
+        object-fit: cover;
+        background: rgb(255 255 255 / 8%);
+        flex-shrink: 0;
+      }
+      .version-text {
+        flex: 1;
+        min-width: 0;
+      }
+      .version-title {
+        font-size: 13px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .version-playing {
+        color: rgb(150 190 255);
+        font-size: 11px;
+      }
+      .version-meta {
+        font-size: 11px;
+        opacity: 0.65;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-variant-numeric: tabular-nums;
+      }
+      .version-badges {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        margin-top: 3px;
+      }
+      .version-badge {
+        display: inline-block;
+        font-size: 10px;
+        padding: 1px 6px;
+        border-radius: 999px;
+        white-space: nowrap;
+      }
+      .version-badge-warn {
+        background: rgb(230 160 40 / 30%);
+        color: rgb(255 210 130);
+      }
+      .version-badge-good {
+        background: rgb(90 200 130 / 30%);
+        color: rgb(150 240 180);
+      }
+      .version-badge-gls {
+        background: rgb(160 110 230 / 32%);
+        color: rgb(210 175 250);
+      }
+      .version-badge-noodle {
+        background: rgb(90 160 230 / 30%);
+        color: rgb(160 205 250);
+      }
+      .version-badge-skip {
+        background: rgb(255 255 255 / 12%);
+        color: rgb(255 255 255 / 75%);
+      }
+      .version-badge-done {
+        background: rgb(120 170 255 / 28%);
+        color: rgb(190 215 255);
+      }
+      .version-pin {
+        flex-shrink: 0;
+        height: 26px;
+        padding: 0 10px;
+        border: none;
+        border-radius: 999px;
+        background: rgb(255 255 255 / 9%);
+        color: rgb(255 255 255 / 85%);
+        font-size: 12px;
+        white-space: nowrap;
+        cursor: pointer;
+        transition: background 0.15s ease;
+      }
+      .version-pin:hover {
+        background: rgb(255 255 255 / 18%);
+        color: #fff;
+      }
+      .version-pin.active {
+        background: rgb(120 170 255 / 45%);
+        color: #fff;
+      }
+      .version-pin.active:hover {
+        background: rgb(230 90 90 / 50%);
       }
 
       /* "About" card (see #about-view in the markup): opens below the panel (above it in the
@@ -1119,6 +1314,7 @@
               <button id="np-map-link" type="button" hidden><span aria-hidden="true">🔗</span><span data-i18n="view_map">Посмотреть карту</span></button>
               <button id="np-random-env" type="button" title="Случайное окружение">🎲</button>
               <button id="np-exit-sync" type="button" title="Выйти из карты — вернуться к сгенерированному лайтшоу">⏏</button>
+              <button id="np-versions-toggle" type="button" title="Другие версии карты" hidden>☰</button>
             </div>
           </div>
         </div>
@@ -1160,6 +1356,20 @@
               <button class="about-link about-underlined about-source" type="button" data-url="https://github.com/Yougurton/ChroPaper"><svg class="about-gh" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 .2a8 8 0 0 0-2.5 15.6c.4.1.5-.2.5-.4v-1.4c-2.2.5-2.7-1-2.7-1-.4-.9-.9-1.2-.9-1.2-.7-.5.1-.5.1-.5.8.1 1.2.8 1.2.8.7 1.2 1.9.9 2.3.7.1-.5.3-.9.5-1.1-1.8-.2-3.6-.9-3.6-4 0-.9.3-1.6.8-2.1-.1-.2-.4-1 .1-2.1 0 0 .7-.2 2.2.8a7.5 7.5 0 0 1 4 0c1.5-1 2.2-.8 2.2-.8.4 1.1.2 1.9.1 2.1.5.6.8 1.3.8 2.1 0 3.1-1.9 3.8-3.6 4 .3.3.6.8.6 1.5v2.2c0 .2.1.5.6.4A8 8 0 0 0 8 .2"/></svg><span data-i18n="about_source">Исходный код</span></button>
             </span>
           </div>
+        </div>
+        <!-- "Other versions" (☰): the maps found of the playing song, best first; the pin button
+             makes one of them play the next time the track does. -->
+        <div id="versions-view">
+          <div class="versions-header">
+            <div>
+              <div class="versions-title" data-i18n="versions_title">Другие версии</div>
+              <div class="versions-hint" data-i18n="versions_hint">Выбранная версия включится сразу и будет играть для этого трека и дальше</div>
+            </div>
+            <button id="versions-close" class="about-close" type="button" aria-label="Close">✕</button>
+          </div>
+          <button id="versions-scroll-up" class="versions-scroll-btn" type="button" hidden>▲</button>
+          <div id="versions-list"></div>
+          <button id="versions-scroll-down" class="versions-scroll-btn" type="button" hidden>▼</button>
         </div>
       </div>
     </div>

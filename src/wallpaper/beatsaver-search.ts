@@ -159,6 +159,36 @@ export function parseSavedMapEntries(raw: readonly unknown[]): BeatSaverMapEntry
   return entries;
 }
 
+/** One map of the song, as listed under "Other versions" in the player. */
+export interface MapVersion extends BeatSaverMapEntry {
+  /** The map's length in seconds (BeatSaver's metadata), null if it doesn't say. */
+  duration: number | null;
+  /** Its length is off the player's: a map of another edit of the song (see differentEdit). */
+  differentEdit: boolean;
+  /** Why the search wouldn't pick it on its own: an environment the viewer can't show (it plays
+   *  in the default one), or a V3/Noodle map while those are turned off in the settings. */
+  excluded: 'unsupported' | 'rich' | null;
+}
+
+const savedMapVersionSchema = savedMapEntrySchema.extend({
+  duration: z.number().nullable(),
+  differentEdit: z.boolean(),
+  excluded: z.enum(['unsupported', 'rich']).nullable(),
+});
+
+/** Map versions saved by sync-memory.ts — anything malformed is dropped. */
+export function parseSavedMapVersions(raw: readonly unknown[]): MapVersion[] {
+  const versions: MapVersion[] = [];
+  for (const item of raw) {
+    const parsed = savedMapVersionSchema.safeParse(item);
+    if (parsed.success) versions.push(parsed.data);
+  }
+  return versions;
+}
+
+/** How many maps of a song the player's "Other versions" list shows at most. */
+export const MAX_MAP_VERSIONS = 10;
+
 export interface BeatSaverSearchResult {
   entry: BeatSaverMapEntry;
   /** Whether the match was confirmed by duration — false when the media player hadn't reported
@@ -168,6 +198,18 @@ export interface BeatSaverSearchResult {
    *  e.g. a radio edit mapped while the album version is playing. The reported position then says
    *  nothing about where in the map we are; sync has to find that from the audio alone. */
   differentEdit: boolean;
+}
+
+export interface BeatSaverSearchOutcome {
+  /** The map to sync to — null when nothing playable turned up. */
+  best: BeatSaverSearchResult | null;
+  /** Every map found of the song, best first (up to MAX_MAP_VERSIONS): the one picked, the others
+   *  that would do, other edits, and those the search wouldn't pick on its own (an unsupported
+   *  environment, V3/Noodle turned off) — for the player's "Other versions" list. */
+  versions: MapVersion[];
+  /** False when part of the search couldn't be done (the song's other names couldn't be looked
+   *  up): a better map may have been missed, so the result shouldn't be remembered for good. */
+  complete: boolean;
 }
 
 /** "How good is this map" — the tie-breaker among candidates that already passed the song-identity
@@ -345,9 +387,10 @@ export async function searchBeatSaverForTrack(
   excludeRichEnvironments = false,
   names?: {
     nameVariants?: (title: string, artist: string) => { title: string; artist: string }[];
-    alternateNames?: (title: string, artist: string) => Promise<{ title: string; artist: string }[]>;
+    /** null: the names couldn't be looked up (the outcome is then marked incomplete). */
+    alternateNames?: (title: string, artist: string) => Promise<{ title: string; artist: string }[] | null>;
   },
-): Promise<BeatSaverSearchResult | null> {
+): Promise<BeatSaverSearchOutcome> {
   // Cleaned queries — BeatSaver's text search does poorly with "(Official Music Video)"-style noise
   // and channel names like "ImagineDragonsVEVO". "Title artist" first; if nothing plausible comes
   // back, the title alone (the artist field is often just an uploader/channel name).
@@ -373,6 +416,8 @@ export async function searchBeatSaverForTrack(
   let otherEdit: ScoredDoc | null = null;
   let best: ScoredDoc | null = null;
   const tried = new Set<string>();
+  // Every acceptable map seen over all the searches, by map id (the best score and tier it got).
+  const seen = new Map<string, Candidate>();
   /** Runs the searches for one name of the song, until one of them finds a match. `knownArtists`
    *  is what candidates' artists are checked against (defaults to `artist`). */
   const searchName = async (title: string, artist: string, knownArtists = artist, maxQueries = Infinity): Promise<ScoredDoc | null> => {
@@ -392,6 +437,16 @@ export async function searchBeatSaverForTrack(
       // The best different edit over all the searches, not just the first one found — a later
       // search (another name of the song) may turn up a better map of it.
       if (found.otherEdit !== null && (otherEdit === null || found.otherEdit.score > otherEdit.score)) otherEdit = found.otherEdit;
+      for (const candidate of found.candidates) {
+        const known = seen.get(candidate.doc.id);
+        if (known === undefined) seen.set(candidate.doc.id, candidate);
+        else {
+          known.score = Math.max(known.score, candidate.score);
+          known.unpenalized = Math.max(known.unpenalized, candidate.unpenalized);
+          known.tier = Math.min(known.tier, candidate.tier) as Candidate['tier'];
+          known.differentEdit &&= candidate.differentEdit;
+        }
+      }
       if (found.match === null) continue;
       if (best === null || found.match.score > best.score) best = found.match;
       return found.match;
@@ -404,6 +459,7 @@ export async function searchBeatSaverForTrack(
     console.log(`[wallpaper] sync: the title may name ${variants.slice(1).map((name) => `"${name.title}" by ${name.artist}`).join(', ')}`);
   }
   let matchedVariant: { title: string; artist: string } | null = null;
+  let complete = true;
   // After a match, the other names are still tried — once each (their first query): the first
   // search can miss the best map of the song ("Virtual Riot - Simulation (VIP)" with the channel
   // "Disciple" found only the plain map; "Simulation (VIP)" by Virtual Riot finds the V3 one too).
@@ -419,7 +475,9 @@ export async function searchBeatSaverForTrack(
     // raw video title rarely finds anything).
     const lookups = matchedVariant !== null ? [matchedVariant] : variants.length > 1 ? variants.slice(1, 3) : variants;
     for (const variant of lookups) {
-      const alternates = await names.alternateNames(variant.title, variant.artist);
+      const found = await names.alternateNames(variant.title, variant.artist);
+      if (found === null) complete = false;
+      const alternates = found ?? [];
       if (alternates.length > 0) {
         console.log(`[wallpaper] sync: also known as ${alternates.map((name) => `"${name.title}" by ${name.artist}`).join(', ')}`);
       }
@@ -430,21 +488,57 @@ export async function searchBeatSaverForTrack(
   }
   // (Assigned inside searchName, which TypeScript's narrowing doesn't follow.)
   const chosen = best as ScoredDoc | null;
+  const chosenEdit = otherEdit as ScoredDoc | null;
+  let result: BeatSaverSearchResult | null = null;
+  let pickedId: string | null = null;
   if (chosen !== null) {
     if (matchedVariant !== null) console.log(`[wallpaper] sync: best match ${describe(chosen.doc)}`);
     const entry = beatSaverEntryFromDoc(chosen.doc);
-    return entry === null ? null : { entry, durationConfirmed: expectedDurationSeconds !== null, differentEdit: false };
+    if (entry !== null) result = { entry, durationConfirmed: expectedDurationSeconds !== null, differentEdit: false };
+    pickedId = chosen.doc.id;
+  } else if (chosenEdit !== null) {
+    console.log(`[wallpaper] sync: best different edit ${describe(chosenEdit.doc)}`);
+    const entry = beatSaverEntryFromDoc(chosenEdit.doc);
+    if (entry !== null) result = { entry, durationConfirmed: false, differentEdit: true };
+    pickedId = chosenEdit.doc.id;
   }
-  const chosenEdit = otherEdit as ScoredDoc | null; // (assigned inside searchName, see above)
-  if (chosenEdit === null) return null;
-  console.log(`[wallpaper] sync: best different edit ${describe(chosenEdit.doc)}`);
-  const entry = beatSaverEntryFromDoc(chosenEdit.doc);
-  return entry === null ? null : { entry, durationConfirmed: false, differentEdit: true };
+  // Best first: the maps the search would pick (the picked one at the very top), then other edits,
+  // then V3/Noodle maps turned off in the settings, then unsupported environments; by score within —
+  // with remixes/covers ranked against the player's own title (a name of the song found elsewhere
+  // may name the remix, and then didn't push it down).
+  const listScore = (candidate: Candidate) => candidate.unpenalized - versionPenalty(candidate.doc, mediaTitle);
+  const ranked = [...seen.values()].sort(
+    (a, b) =>
+      Number(b.doc.id === pickedId) - Number(a.doc.id === pickedId) || a.tier - b.tier || listScore(b) - listScore(a),
+  );
+  const versions: MapVersion[] = [];
+  for (const candidate of ranked.slice(0, MAX_MAP_VERSIONS)) {
+    const entry = beatSaverEntryFromDoc(candidate.doc);
+    if (entry === null) continue;
+    versions.push({
+      ...entry,
+      duration: candidate.doc.metadata.duration ?? null,
+      differentEdit: candidate.differentEdit,
+      excluded: candidate.tier === 3 ? 'unsupported' : candidate.tier === 2 ? 'rich' : null,
+    });
+  }
+  if (versions.length > 1) console.log(`[wallpaper] sync: ${String(versions.length)} versions of the song found`);
+  return { best: result, versions, complete };
 }
 
 interface ScoredDoc {
   doc: MapDoc;
   score: number;
+}
+
+/** A map of the song for the "Other versions" list. tier: 0 = would be picked (right length, or
+ *  the length unknown), 1 = another edit, 2 = a V3/Noodle map turned off in the settings, 3 = an
+ *  environment the viewer can't show. */
+interface Candidate extends ScoredDoc {
+  tier: 0 | 1 | 2 | 3;
+  differentEdit: boolean;
+  /** The score without the remix/cover penalty. */
+  unpenalized: number;
 }
 
 const DURATION_TOLERANCE_SECONDS = 8;
@@ -470,39 +564,52 @@ async function searchOnce(
   mediaArtist: string,
   expectedDurationSeconds: number | null,
   excludeRichEnvironments: boolean,
-): Promise<{ match: ScoredDoc | null; otherEdit: ScoredDoc | null }> {
+): Promise<{ match: ScoredDoc | null; otherEdit: ScoredDoc | null; candidates: Candidate[] }> {
   const result = await requestJson(
     `${env.VITE_BEATSAVER_API_URL}/search/text/0?q=${encodeURIComponent(query)}&order=Relevance&pageSize=20`,
     mapPageSchema,
     { source: 'beatsaver', label: `search for "${query}"`, operation: 'search-track' },
   );
-  if (result.isErr()) return { match: null, otherEdit: null };
+  if (result.isErr()) return { match: null, otherEdit: null, candidates: [] };
   let best: { doc: MapDoc; score: number } | null = null;
   let bestOtherEdit: { doc: MapDoc; score: number } | null = null;
+  const candidates: Candidate[] = [];
   for (const doc of result.value.docs) {
     const title = titleMatchLevel(doc, mediaTitle, mediaArtist);
     const artist = artistMatches(doc, mediaArtist, mediaTitle);
     if (title === 0 || (title === 1 && !artist)) continue;
-    // Maps the viewer can't show, or without a lightshow, are never synced to; nor, with V3/Noodle
-    // maps turned off in the settings, are those.
-    if (!isSupportedDoc(doc) || !hasLightshowDoc(doc)) continue;
-    if (excludeRichEnvironments && isRichEnvironmentDoc(doc)) continue;
+    // Without a lightshow there's nothing to show at all.
+    if (!hasLightshowDoc(doc)) continue;
     // Title tiers are spaced wider than the quality range (0-80), so a better map can pick
     // between maps of the same song, but never beats the exact version over e.g. a VIP/remix.
     const titleScore = title === 3 ? 260 : title === 2 ? 150 : 40;
-    const score = titleScore + (artist ? 20 : 0) + scoreByLightshowRichness(doc) - versionPenalty(doc, mediaTitle);
-    if (expectedDurationSeconds !== null) {
-      const duration = doc.metadata.duration;
-      if (duration === undefined || Math.abs(duration - expectedDurationSeconds) > DURATION_TOLERANCE_SECONDS) {
-        // Another edit counts only with the song name *and* the artist matching — without the
-        // length check, a looser match would too easily be a different song.
-        if (title >= 2 && artist && (bestOtherEdit === null || score > bestOtherEdit.score)) bestOtherEdit = { doc, score };
-        continue;
-      }
+    const unpenalized = titleScore + (artist ? 20 : 0) + scoreByLightshowRichness(doc);
+    const score = unpenalized - versionPenalty(doc, mediaTitle);
+    const duration = doc.metadata.duration;
+    const otherLength =
+      expectedDurationSeconds !== null &&
+      (duration === undefined || Math.abs(duration - expectedDurationSeconds) > DURATION_TOLERANCE_SECONDS);
+    // Another edit counts only with the song name *and* the artist matching — without the length
+    // check, a looser match would too easily be a different song.
+    if (otherLength && !(title >= 2 && artist)) continue;
+    // Maps the viewer can't show are never synced to on their own; nor, with V3/Noodle maps turned
+    // off in the settings, are those — they're only listed, to be picked by hand.
+    if (!isSupportedDoc(doc)) {
+      candidates.push({ doc, score, tier: 3, differentEdit: otherLength, unpenalized });
+      continue;
+    }
+    if (excludeRichEnvironments && isRichEnvironmentDoc(doc)) {
+      candidates.push({ doc, score, tier: 2, differentEdit: otherLength, unpenalized });
+      continue;
+    }
+    candidates.push({ doc, score, tier: otherLength ? 1 : 0, differentEdit: otherLength, unpenalized });
+    if (otherLength) {
+      if (bestOtherEdit === null || score > bestOtherEdit.score) bestOtherEdit = { doc, score };
+      continue;
     }
     if (best === null || score > best.score) best = { doc, score };
   }
-  return { match: best, otherEdit: bestOtherEdit };
+  return { match: best, otherEdit: bestOtherEdit, candidates };
 }
 
 /** Downloads a map's files (or reads them from the map cache, where it's also saved). onProgress is

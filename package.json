@@ -1,7 +1,7 @@
 {
   "name": "chropaper",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Beat Saber lightshows as a live wallpaper for Wallpaper Engine, based on ChroViewer",
   "author": "Yougurton",
   "license": "GPL-2.0-only",

@@ -31,6 +31,8 @@ import {
   setStatusPinned,
   setTrack,
   setUiScale,
+  setVersions,
+  type VersionRow,
   hideEpilepsyWarning,
   setFps,
   hideUiHint,
@@ -44,10 +46,26 @@ import { ListenLightshow } from './listen-lightshow';
 import { buildSyncReference, referenceLoudness, SyncAligner, type SyncReference } from './audio-sync';
 import { lookupCover } from './cover-lookup';
 import { alternateTrackNames, nameVariants } from './track-names';
-import { forgetSync, recallSync, rememberSync, rememberSyncOffset } from './sync-memory';
+import {
+  forgetChoice,
+  forgetSync,
+  pinVersion,
+  recallChoice,
+  recallSync,
+  rememberCompleted,
+  rememberSync,
+  rememberSyncOffset,
+  touchSync,
+} from './sync-memory';
 import { installDebugLog } from './debug-log';
 import { browserMapArchiveCache, initMapArchiveCache } from '../sources/map-archive-cache';
-import { loadBeatSaverMap, searchBeatSaverForTrack, type BeatSaverSearchResult } from './beatsaver-search';
+import {
+  loadBeatSaverMap,
+  searchBeatSaverForTrack,
+  type BeatSaverSearchOutcome,
+  type BeatSaverSearchResult,
+  type MapVersion,
+} from './beatsaver-search';
 import { DEFAULT_WALLPAPER_CONTROLS, listenForWallpaperControls, waitForInitialProperties } from './wallpaper-controls';
 
 // Wallpaper Engine's audio-visualizer and media-integration APIs — undocumented in TypeScript's
@@ -157,6 +175,15 @@ const FRESH_POSITION_WAIT_MS = 2500;
 const LISTEN_SYNC_MIN_PLAY_MS = 3000;
 // For a track synced before (see sync-memory.ts): a shorter wait, the duration only confirms it.
 const REMEMBERED_DURATION_WAIT_MS = 1500;
+// A synced map counts as played to the end (see rememberCompleted) once its clock gets this far,
+// after at least this long on screen (not just a jump to the end).
+const LISTEN_SYNC_COMPLETED_FRACTION = 0.9;
+const LISTEN_SYNC_COMPLETED_MIN_PLAY_MS = 30_000;
+// How far apart (s) the player's and a map's lengths can be for the same edit of the song — the
+// same tolerance the search uses.
+const SYNC_DURATION_TOLERANCE_SECONDS = 8;
+// How long a one-off sync message stays in the status pill (as long as hud.ts shows it).
+const SYNC_MESSAGE_HOLD_MS = 5000;
 // When a synced map runs out before the player reports the next track, it's held (frozen on its
 // last frame) this long for the next title to show up, rather than dropping straight back to the
 // generated show — which the next track's map would replace again a moment later.
@@ -267,15 +294,14 @@ const SYNC_MIN_LIGHT_EVENTS = 20;
  *  track the actual music much more closely, so they're tried first; Expert+ (or, failing that,
  *  whatever pickBestRow would choose) is still used as a fallback rather than refusing to sync a
  *  map that simply doesn't have an easier difficulty at all. */
-function pickSyncRow(rows: DifficultyRow[]): DifficultyRow | undefined {
-  // Only difficulties the viewer can actually show (known environment, no Vivify).
-  const playable = rows.filter(
-    (row) =>
-      row.difficulty !== undefined &&
-      row.infoDifficulty !== undefined &&
-      row.environmentId !== undefined &&
-      row.environmentSupported !== false,
+function pickSyncRow(rows: DifficultyRow[], allowUnsupported = false): DifficultyRow | undefined {
+  // Only difficulties the viewer can actually show (known environment, no Vivify) — unless the map
+  // was picked by hand, and none can: then it's shown in the default environment.
+  const complete = rows.filter(
+    (row) => row.difficulty !== undefined && row.infoDifficulty !== undefined && row.environmentId !== undefined,
   );
+  const supported = complete.filter((row) => row.environmentSupported !== false);
+  const playable = supported.length > 0 || !allowUnsupported ? supported : complete;
   // Only consider difficulties that actually carry lighting, when any do — a difficulty with no
   // events (e.g. a "Lawless" characteristic) would sync perfectly and show nothing.
   const lit = playable.filter((row) => lightEventCount(row.difficulty) > 0);
@@ -602,6 +628,12 @@ async function main() {
   let listenSyncDifferentEdit = false;
   // The track the synced map is remembered under (see sync-memory.ts), while synced.
   let listenSyncMemory: { title: string; artist: string; hash: string } | null = null;
+  // The versions of the song found for the current track — the player's "Other versions" list
+  // (null: no search for this track, sync off). bestHash is the search's own pick.
+  let listenVersions: { title: string; artist: string; versions: MapVersion[]; bestHash: string | null } | null = null;
+  // The synced map as a version of the song (what "played to the end" remembers), while synced.
+  let listenSyncPlayingVersion: MapVersion | null = null;
+  let listenSyncCompletedMarked = false;
   // Handover (see holdSyncedMap): the previous track's map stays on screen, still running, while the next
   // track's map is being searched for — the generated show only comes back if that search fails.
   let listenSyncHandover = false;
@@ -614,6 +646,8 @@ async function main() {
   // even if it's the same one.
   let listenTitleLost = false;
   let listenSyncSearching = false;
+  // Until when a one-off sync message ("not found", "download failed") keeps the status pill.
+  let listenSyncMessageUntil = 0;
   let listenAlignMisses = 0;
   let listenAlignLost = false;
   let listenHandledSeekAt = 0;
@@ -993,6 +1027,8 @@ async function main() {
     listenSyncSongTimeOffset = 0;
     listenSyncDifferentEdit = false;
     listenSyncMemory = null;
+    listenSyncPlayingVersion = null;
+    refreshVersionsView();
     listenSyncReference = null;
     resetAudioAlignment();
     listenPendingHardSeek = null;
@@ -1063,8 +1099,17 @@ async function main() {
    *  to the audio, then gone. When the audio can't lock it (no audio capture, the map's audio
    *  couldn't be analysed, or no lock within LISTEN_ALIGN_STATUS_TIMEOUT_MS), it goes away once
    *  the reported position has held without corrections instead. */
+  function showSyncMessage(status: 'not_found' | 'download_failed') {
+    setListenSyncStatus(status);
+    listenSyncMessageUntil = performance.now() + SYNC_MESSAGE_HOLD_MS;
+  }
+
   function refreshSyncStatus() {
     if (!listenSyncActive) return;
+    // A new map being searched for / downloaded (another version chosen in the player) reports its
+    // own progress, and a one-off message ("not found"…) stays up for its few seconds — the map
+    // still playing meanwhile doesn't talk over either.
+    if (listenSyncSearching || performance.now() < listenSyncMessageUntil) return;
     if (listenSyncPaused) {
       setListenSyncStatus('paused');
       return;
@@ -1151,10 +1196,78 @@ async function main() {
     return corrected;
   }
 
-  async function trySyncWithBeatSaverMap(title: string, artist: string) {
+  /** The "Other versions" list in the player, from listenVersions and the listener's choice. */
+  function refreshVersionsView() {
+    const state = listenVersions;
+    if (state === null) {
+      setVersions(null);
+      return;
+    }
+    const choice = recallChoice(state.title, state.artist, freshMediaDuration());
+    const synced = listenSyncActive && !listenSyncHandover && listenSyncMemory?.title === state.title && listenSyncMemory.artist === state.artist;
+    const playingHash = synced ? (listenSyncMemory?.hash ?? null) : null;
+    const versions = [...state.versions];
+    // The playing / chosen version is listed even when the search's list doesn't have it.
+    for (const extra of [synced ? listenSyncPlayingVersion : null, choice?.pinned ?? null, choice?.completed ?? null]) {
+      if (extra !== null && !versions.some((version) => version.hash === extra.hash)) versions.push(extra);
+    }
+    const rows: VersionRow[] = versions.map((version) => ({
+      hash: version.hash,
+      title: version.title,
+      mapper: version.mapper,
+      coverUrl: version.coverUrl,
+      duration: version.duration,
+      isCurrent: version.hash === playingHash,
+      isPinned: choice?.pinned?.hash === version.hash,
+      isCompleted: choice?.completed?.hash === version.hash,
+      environmentSupported: version.environmentSupported,
+      usesChroma: version.usesChroma,
+      usesNoodleExtensions: version.usesNoodleExtensions,
+      mightUseGLS: version.mightUseGLS,
+      differentEdit: version.differentEdit,
+      excluded: version.excluded,
+    }));
+    setVersions(rows);
+  }
+
+  /** The track's versions, searched for in the background — the map played was the listener's own
+   *  choice, so nothing waited for a search, but the list (and the memory) still needs one. */
+  function searchVersionsInBackground(title: string, artist: string, duration: number | null) {
+    void searchBeatSaverForTrack(title, artist, duration, !listenSyncRichMaps, {
+      nameVariants,
+      alternateNames: (name, nameArtist) => alternateTrackNames(name, nameArtist, duration),
+    })
+      .then((outcome) => {
+        if (outcome.best !== null && outcome.complete) rememberSync(title, artist, { ...outcome.best, duration, versions: outcome.versions });
+        if (listenVersions?.title !== title || listenVersions.artist !== artist) return;
+        listenVersions.versions = outcome.versions;
+        listenVersions.bestHash = outcome.best?.entry.hash ?? null;
+        refreshVersionsView();
+      })
+      .catch((error: unknown) => console.warn('[wallpaper] sync: searching for the other versions failed', error));
+  }
+
+  /** The synced map has been played to the end: if it isn't the search's own pick, it becomes the
+   *  track's main version (a pinned one still comes first) — see rememberCompleted. */
+  function markSyncCompleted() {
+    const memory = listenSyncMemory;
+    const version = listenSyncPlayingVersion;
+    if (memory === null || version === null) return;
+    const bestHash = listenVersions?.title === memory.title && listenVersions.artist === memory.artist ? listenVersions.bestHash : null;
+    const isPick = bestHash === version.hash;
+    rememberCompleted(memory.title, memory.artist, isPick ? null : version, freshMediaDuration());
+    console.log(`[wallpaper] sync: "${version.title}" (${version.mapId}) played to the end${isPick ? '' : ' — it plays first for this track from now on'}`);
+    refreshVersionsView();
+  }
+
+  async function trySyncWithBeatSaverMap(title: string, artist: string, options: { ignoreChoice?: boolean } = {}) {
     const token = ++listenSyncToken;
     listenSyncSearching = true;
     setListenSyncStatus('searching');
+    if (listenVersions?.title !== title || listenVersions.artist !== artist) {
+      listenVersions = { title, artist, versions: [], bestHash: null };
+      refreshVersionsView();
+    }
     try {
       // Waits for a duration that belongs to *this* track (see freshMediaDuration) before searching.
       // Duration and title/artist come from two independent Wallpaper Engine callbacks with no
@@ -1169,17 +1282,49 @@ async function main() {
       if (token !== listenSyncToken) return;
       const isCached = (hash: string) => browserMapArchiveCache?.isCached(hash) === true;
       let remembered = recallSync(title, artist, freshMediaDuration(), isCached);
-      if (remembered !== null && remembered.duration !== null) {
+      const useChoice = options.ignoreChoice !== true;
+      let choice = useChoice ? recallChoice(title, artist, freshMediaDuration()) : null;
+      if ((remembered !== null && remembered.duration !== null) || (choice !== null && choice.duration !== null)) {
         for (let waited = 0; freshMediaDuration() === null && waited < REMEMBERED_DURATION_WAIT_MS; waited += DURATION_WAIT_POLL_MS) {
           await sleep(DURATION_WAIT_POLL_MS);
           if (token !== listenSyncToken) return;
         }
         remembered = recallSync(title, artist, freshMediaDuration(), isCached);
+        choice = useChoice ? recallChoice(title, artist, freshMediaDuration()) : null;
       }
       let duration: number | null;
       let searchResult: BeatSaverSearchResult | null;
-      if (remembered !== null) {
+      // The listener's own choice comes first: the version pinned in the player's list, else the one
+      // last played to the end (see sync-memory.ts).
+      const chosen = choice?.pinned ?? choice?.completed ?? null;
+      let freshSearch: BeatSaverSearchOutcome | null = null;
+      const versionsState = listenVersions;
+      if (chosen !== null) {
         duration = freshMediaDuration();
+        searchResult = {
+          entry: chosen,
+          durationConfirmed: duration !== null,
+          differentEdit:
+            duration !== null && chosen.duration !== null
+              ? Math.abs(chosen.duration - duration) > SYNC_DURATION_TOLERANCE_SECONDS
+              : chosen.differentEdit,
+        };
+        console.log(
+          `[wallpaper] sync: ${choice?.pinned !== null ? 'the version picked in the player' : 'the version last played to the end'} — "${
+            chosen.title
+          }" (${chosen.mapId})${isCached(chosen.hash) ? ' from the map cache' : ''}`,
+        );
+        if (versionsState !== null) {
+          versionsState.versions = remembered?.versions ?? [];
+          versionsState.bestHash = remembered?.entry.hash ?? null;
+        }
+        if (remembered === null) searchVersionsInBackground(title, artist, duration);
+      } else if (remembered !== null) {
+        duration = freshMediaDuration();
+        if (versionsState !== null) {
+          versionsState.versions = remembered.versions;
+          versionsState.bestHash = remembered.entry.hash;
+        }
         searchResult = {
           entry: remembered.entry,
           durationConfirmed: remembered.durationConfirmed,
@@ -1197,14 +1342,25 @@ async function main() {
         }
         const searchDuration = freshMediaDuration();
         duration = searchDuration;
-        searchResult = await searchBeatSaverForTrack(title, artist, searchDuration, !listenSyncRichMaps, {
+        freshSearch = await searchBeatSaverForTrack(title, artist, searchDuration, !listenSyncRichMaps, {
           nameVariants,
           alternateNames: (name, nameArtist) => alternateTrackNames(name, nameArtist, searchDuration),
         });
+        searchResult = freshSearch.best;
+        if (versionsState !== null) {
+          versionsState.versions = freshSearch.versions;
+          versionsState.bestHash = freshSearch.best?.entry.hash ?? null;
+        }
       }
+      refreshVersionsView();
       if (token !== listenSyncToken) return; // track changed again while we were searching
+      // The chosen version didn't work out (deleted, broken, offline): the usual pick instead.
+      const fallBackFromChoice = async (reason: string) => {
+        console.warn(`[wallpaper] sync: the chosen version ${reason} — taking the usual pick instead`);
+        await trySyncWithBeatSaverMap(title, artist, { ignoreChoice: true });
+      };
       if (searchResult === null) {
-        setListenSyncStatus('not_found');
+        showSyncMessage('not_found');
         return;
       }
       const { entry, durationConfirmed, differentEdit } = searchResult;
@@ -1219,7 +1375,8 @@ async function main() {
       });
       if (token !== listenSyncToken) return;
       if (files === null) {
-        setListenSyncStatus('download_failed');
+        if (chosen !== null) return await fallBackFromChoice("couldn't be downloaded");
+        showSyncMessage('download_failed');
         console.warn(`[wallpaper] sync: failed to download "${entry.title}"`);
         return;
       }
@@ -1228,15 +1385,18 @@ async function main() {
         parsed = await parseMapPackage(files, parser, null);
       } catch (error) {
         console.error(`[wallpaper] sync: failed to parse "${entry.title}" (${entry.mapId})`, error);
+        if (chosen !== null) return await fallBackFromChoice("couldn't be read");
         setListenSyncStatus(null);
         return;
       }
       if (token !== listenSyncToken) return;
-      const row = pickSyncRow(parsed.rows);
+      // A version picked by hand plays even in an environment the viewer can't show (in the default one).
+      const row = pickSyncRow(parsed.rows, chosen !== null);
       const hasShow = lightEventCount(row?.difficulty) >= SYNC_MIN_LIGHT_EVENTS;
       if (row?.difficulty === undefined || row.infoDifficulty === undefined || row.environmentId === undefined || !hasShow) {
         // (The search already leaves out maps it can tell are unsupported; this catches the rest.)
-        setListenSyncStatus('not_found');
+        if (chosen !== null) return await fallBackFromChoice('has no lightshow the viewer can show');
+        showSyncMessage('not_found');
         console.warn(`[wallpaper] sync: "${entry.title}" has no difficulty with a lightshow the viewer can show`);
         return;
       }
@@ -1360,8 +1520,7 @@ async function main() {
       listenSyncSongTimeOffset = parsed.mapMeta.songTimeOffset;
       // Heard before with this very map: start at the offset it was locked at back then, so there's
       // no big jump at the start while the audio alignment settles in again.
-      const rememberedOffset =
-        !differentEdit && remembered?.entry.hash === entry.hash ? remembered.learnedOffset : null;
+      const rememberedOffset = !differentEdit ? (remembered?.offsets[entry.hash] ?? null) : null;
       listenSyncLearnedOffset = rememberedOffset ?? leadInSeconds + listenSyncSongTimeOffset;
       if (rememberedOffset !== null) console.log(`[wallpaper] sync: starting at the remembered offset ${rememberedOffset.toFixed(2)} s`);
       listenSyncReference = null;
@@ -1396,8 +1555,25 @@ async function main() {
       listenSyncActive = true;
       listenSyncHandover = false; // (the previous track's held map, if any, is replaced now)
       document.body.dataset.listenSyncing = 'true';
-      rememberSync(title, artist, { entry, duration, differentEdit, durationConfirmed });
+      if (freshSearch !== null && freshSearch.best !== null && freshSearch.complete) {
+        rememberSync(title, artist, { ...freshSearch.best, duration, versions: freshSearch.versions });
+      } else if (freshSearch !== null) {
+        // Part of the search failed (Apple didn't answer): played now, but searched afresh next
+        // time rather than remembered — a better map may have been missed.
+        console.log('[wallpaper] sync: the search was incomplete — not remembered, the track is searched again next time');
+      } else {
+        touchSync(title, artist);
+      }
       listenSyncMemory = { title, artist, hash: entry.hash };
+      listenSyncPlayingVersion = chosen ??
+        listenVersions?.versions.find((version) => version.hash === entry.hash) ?? {
+          ...entry,
+          duration: Math.round(clock.duration),
+          differentEdit,
+          excluded: null,
+        };
+      listenSyncCompletedMarked = false;
+      refreshVersionsView();
       listenAlignUnavailable = syncBuffer === null;
       if (syncBuffer !== null) {
         const buffer: AudioBuffer = syncBuffer;
@@ -1697,7 +1873,10 @@ async function main() {
       // With sync on, a synced map stays up (still running) while the new track's map is searched for —
       // see holdSyncedMap; the generated show only comes back if that search finds nothing.
       if (listenSyncEnabled) holdSyncedMap();
-      else exitSyncMode();
+      else {
+        listenVersions = null;
+        exitSyncMode();
+      }
       listenSyncToken += 1; // invalidate any sync attempt still in flight for the *previous* track
       // mediaDuration is deliberately NOT reset here any more: this tick runs up to 200 ms after the
       // title actually changed, and the new track's duration often arrives in that gap (or even just
@@ -1711,6 +1890,7 @@ async function main() {
         const title = mediaTitle;
         void trySyncWithBeatSaverMap(mediaTitle, mediaArtist).then(() => {
           if (listenLastSyncTitle !== title) return; // the track changed again in the meantime
+          if (listenSyncSearching) return; // a newer attempt took over (a version chosen in the player)
           // No map for this track: the previous track's held map (if any) gives way to the
           // generated show only now.
           if (listenSyncHandover) exitSyncMode({ restoreEnvironment: !(isTrackChange && listenRandomEnvironment) });
@@ -1899,6 +2079,14 @@ async function main() {
         holdSyncedMap(); // the next track is usually a moment away — see LISTEN_SYNC_END_GRACE_MS
       } else if (!listenSyncPaused) {
         setProgress(listenSyncClock.currentTime(), listenSyncClock.duration);
+        if (
+          !listenSyncCompletedMarked &&
+          listenSyncClock.currentTime() >= listenSyncClock.duration * LISTEN_SYNC_COMPLETED_FRACTION &&
+          performance.now() - listenSyncStartedAt > LISTEN_SYNC_COMPLETED_MIN_PLAY_MS
+        ) {
+          listenSyncCompletedMarked = true;
+          markSyncCompleted();
+        }
         document.body.dataset.listenHasProgress = 'true';
         // Continuously slaved to the player's own reported position (plus the constant offset
         // learned at startup) rather than left to free-run indefinitely — see the README for the
@@ -2323,6 +2511,7 @@ async function main() {
       if (!enabled) {
         // Turning it off mid-sync should hand back control to the generated show immediately,
         // not just stop future sync attempts.
+        listenVersions = null;
         exitSyncMode();
         listenSyncToken += 1;
       } else if (mediaTitle !== '') {
@@ -2403,9 +2592,50 @@ async function main() {
       // forgotten for this track (it's most likely the wrong one), so next time it's searched anew.
       if (!listenSyncActive) return;
       console.log('[wallpaper] sync: left the map by button — back to the generated lightshow');
-      if (listenSyncMemory !== null) forgetSync(listenSyncMemory.title, listenSyncMemory.artist);
+      // A version chosen in the player is dropped from the choice too; the search's memory only if
+      // it was the search's own pick.
+      if (listenSyncMemory !== null) {
+        const { title, artist, hash } = listenSyncMemory;
+        forgetChoice(title, artist, hash);
+        const bestHash = listenVersions?.title === title && listenVersions.artist === artist ? listenVersions.bestHash : null;
+        if (bestHash === null || bestHash === hash) forgetSync(title, artist);
+      }
       listenSyncToken += 1;
       exitSyncMode();
+    },
+    onChooseVersion: (hash) => {
+      // A version in the "Other versions" list: pinned for this track, and switched to right away
+      // (downloaded if needed) — the map playing now stays up until the chosen one is ready.
+      const state = listenVersions;
+      if (state === null) return;
+      const choice = recallChoice(state.title, state.artist, null);
+      const version =
+        state.versions.find((candidate) => candidate.hash === hash) ??
+        (listenSyncPlayingVersion?.hash === hash ? listenSyncPlayingVersion : null) ??
+        (choice?.pinned?.hash === hash ? choice.pinned : null) ??
+        (choice?.completed?.hash === hash ? choice.completed : null);
+      if (version === null) return;
+      pinVersion(state.title, state.artist, version, freshMediaDuration());
+      const playingNow =
+        listenSyncActive && !listenSyncHandover && listenSyncMemory?.title === state.title && listenSyncMemory.hash === hash;
+      const sameTrack = mediaTitle === state.title && mediaArtist === state.artist;
+      console.log(`[wallpaper] sync: chose "${version.title}" (${version.mapId}) for "${state.title}"${playingNow ? '' : ' — switching to it'}`);
+      if (!playingNow && sameTrack && listenSyncEnabled) {
+        showToast(t('versions_switching'));
+        void trySyncWithBeatSaverMap(state.title, state.artist);
+      } else {
+        showToast(t('versions_pinned'));
+      }
+      refreshVersionsView();
+    },
+    onUnpinVersion: (hash) => {
+      // The pinned version's button again: the choice is cleared (what's playing stays).
+      const state = listenVersions;
+      if (state === null || recallChoice(state.title, state.artist, null)?.pinned?.hash !== hash) return;
+      pinVersion(state.title, state.artist, null, freshMediaDuration());
+      console.log(`[wallpaper] sync: unpinned the version for "${state.title}"`);
+      showToast(t('versions_unpinned'));
+      refreshVersionsView();
     },
     onRandomEnvironment: () => {
       // The 🎲 button in the player: a new random environment right now, through the usual fade —

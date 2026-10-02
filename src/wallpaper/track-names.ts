@@ -135,27 +135,88 @@ async function namesFromSearch(
 }
 
 /** The song's names in the other store(s), not counting the one the player already reported. */
-export async function alternateTrackNames(title: string, artist: string, durationSeconds: number | null): Promise<TrackName[]> {
+// Names found are also kept across sessions (localStorage): Apple's API doesn't always answer
+// (timeouts, rate limits), and a lookup that once worked shouldn't have to work again for the song
+// to find its best map. "No other names" is only kept for a day, in case that was a fluke.
+const NAMES_STORAGE_KEY = 'chropaper.altNames';
+const MAX_STORED_NAMES = 300;
+const EMPTY_NAMES_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const RETRY_DELAY_MS = 1500;
+
+type StoredNames = Record<string, { names: TrackName[]; at: number }>;
+
+function loadStoredNames(): StoredNames {
+  try {
+    const raw = window.localStorage.getItem(NAMES_STORAGE_KEY);
+    const parsed: unknown = raw === null ? null : JSON.parse(raw);
+    return parsed !== null && typeof parsed === 'object' ? (parsed as StoredNames) : {};
+  } catch {
+    return {};
+  }
+}
+
+function storedNames(key: string): TrackName[] | undefined {
+  const record = loadStoredNames()[key];
+  if (record === undefined || !Array.isArray(record.names) || typeof record.at !== 'number') return undefined;
+  if (record.names.length === 0 && Date.now() - record.at > EMPTY_NAMES_MAX_AGE_MS) return undefined;
+  const names = record.names.filter(
+    (name): name is TrackName => typeof name === 'object' && typeof name.title === 'string' && typeof name.artist === 'string',
+  );
+  return names;
+}
+
+function storeNames(key: string, names: TrackName[]) {
+  try {
+    const store = loadStoredNames();
+    store[key] = { names, at: Date.now() };
+    const keys = Object.keys(store);
+    if (keys.length > MAX_STORED_NAMES) {
+      keys
+        .sort((a, b) => (store[a]?.at ?? 0) - (store[b]?.at ?? 0))
+        .slice(0, keys.length - MAX_STORED_NAMES)
+        .forEach((old) => delete store[old]);
+    }
+    window.localStorage.setItem(NAMES_STORAGE_KEY, JSON.stringify(store));
+  } catch {
+    // storage unavailable: the session cache still has them
+  }
+}
+
+/** The song's names in other languages (see namesFromSearch) — [] when there are none, null when
+ *  Apple couldn't be asked (twice), so the caller knows the search wasn't complete. */
+export async function alternateTrackNames(title: string, artist: string, durationSeconds: number | null): Promise<TrackName[] | null> {
   const cleanedArtist = cleanArtist(artist);
   const key = `${title}|${cleanedArtist}|${durationSeconds === null ? '' : String(Math.round(durationSeconds))}`;
-  const cached = cache.get(key);
+  const cached = cache.get(key) ?? storedNames(key);
   if (cached !== undefined) return cached;
 
-  let names: TrackName[] = [];
-  try {
-    // Without "feat." credits: they make Apple's search prefer odd versions of the song.
-    const withoutCredits = (text: string) => text.replace(/\s*\b(?:feat|ft)\b\.?.*$/iu, '');
+  // Without "feat." credits: they make Apple's search prefer odd versions of the song.
+  const withoutCredits = (text: string) => text.replace(/\s*\b(?:feat|ft)\b\.?.*$/iu, '');
+  const lookUp = async () => {
+    let names: TrackName[] = [];
     // Title + artist first; if that finds nothing usable (the "artist" may be a channel or a singer
     // credit Apple doesn't list, which empties the results), the title alone.
     for (const term of [`${withoutCredits(title)} ${withoutCredits(cleanedArtist)}`.trim(), withoutCredits(title).trim()]) {
       names = await namesFromSearch(term, title, cleanedArtist, durationSeconds);
       if (names.length > 0) break;
     }
+    return names;
+  };
+  let names: TrackName[];
+  try {
+    names = await lookUp();
   } catch (error) {
-    console.warn('[wallpaper] sync: looking up other names of the song failed', error);
-    return []; // not cached: may work next time
+    console.warn('[wallpaper] sync: looking up other names of the song failed, trying once more', error);
+    await new Promise((resolve) => window.setTimeout(resolve, RETRY_DELAY_MS));
+    try {
+      names = await lookUp();
+    } catch (retryError) {
+      console.warn('[wallpaper] sync: looking up other names of the song failed again', retryError);
+      return null; // not cached: may work next time
+    }
   }
   cache.set(key, names);
+  storeNames(key, names);
   return names;
 }
 

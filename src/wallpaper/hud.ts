@@ -26,6 +26,35 @@ export interface NowPlayingHandlers {
   onRandomEnvironment(): void;
   /** The ⏏ button, while synced to a BeatSaver map: drop the map, back to the generated show. */
   onExitSync(): void;
+  /** A row in "Other versions" (or its "Choose" button): switch to that version now, and keep
+   *  playing it for this track. */
+  onChooseVersion(hash: string): void;
+  /** The chosen version's button again: clear the choice. */
+  onUnpinVersion(hash: string): void;
+}
+
+/** One map of the playing song in the "Other versions" list (☰). */
+export interface VersionRow {
+  hash: string;
+  title: string;
+  mapper: string;
+  coverUrl: string | null;
+  /** The map's length in seconds, null if unknown. */
+  duration: number | null;
+  /** Synced to right now. */
+  isCurrent: boolean;
+  /** Picked by hand: plays the next time the track does. */
+  isPinned: boolean;
+  /** Played to the end last time (and not the search's own pick): the main version unless one is pinned. */
+  isCompleted: boolean;
+  environmentSupported: boolean;
+  usesChroma: boolean;
+  usesNoodleExtensions: boolean;
+  mightUseGLS: boolean;
+  /** Its length is off the track's: another edit of the song. */
+  differentEdit: boolean;
+  /** Why the search wouldn't pick it on its own (see MapVersion.excluded). */
+  excluded: 'unsupported' | 'rich' | null;
 }
 
 function phaseLabel(phase: HudPhase): string {
@@ -547,6 +576,7 @@ function setExpandActive(active: boolean) {
 /** The "About" card (the link shown in place of the mapper line while nothing plays) — opens below
  *  the panel. */
 function openAboutView() {
+  closeVersionsView();
   setExpandActive(true);
   byId('now-playing-panel')?.classList.add('expanded');
   const version = byId('about-version-number');
@@ -582,11 +612,176 @@ function closeAboutView() {
   }, ABOUT_CLOSE_MS);
 }
 
+// "Other versions" (☰): the maps found of the playing song, best first, each with a pin button.
+let versionRows: VersionRow[] | null = null;
+let versionsCloseTimer: number | null = null;
+const VERSIONS_CLOSE_MS = 180; // matches #versions-view.closing's animation in index.html
+const VERSIONS_ROW_STAGGER_MS = 30;
+
+function versionsOpen(): boolean {
+  const view = byId('versions-view');
+  return view !== null && view.classList.contains('expanded') && !view.classList.contains('closing');
+}
+
+/** The list is worth opening when it offers something besides the map already playing. */
+function versionsAvailable(rows: VersionRow[] | null): boolean {
+  return rows !== null && rows.some((row) => !row.isCurrent);
+}
+
+/** The versions of the playing song (null: none — the ☰ button goes away). Re-renders the list
+ *  when it's open. */
+export function setVersions(rows: VersionRow[] | null) {
+  versionRows = rows;
+  const available = versionsAvailable(rows);
+  const toggle = byId('np-versions-toggle');
+  if (toggle !== null) {
+    toggle.hidden = !available;
+    toggle.title = t('versions_toggle_title');
+  }
+  if (!available) {
+    closeVersionsView();
+    return;
+  }
+  if (versionsOpen()) renderVersions(false);
+}
+
+function badge(className: string, text: string, title: string) {
+  const element = document.createElement('span');
+  element.className = `version-badge ${className}`;
+  element.textContent = text;
+  element.title = title;
+  return element;
+}
+
+function renderVersions(animate: boolean) {
+  const list = byId('versions-list');
+  if (list === null) return;
+  const scrollTop = list.scrollTop;
+  list.replaceChildren();
+  const rows = versionRows ?? [];
+  rows.forEach((row, index) => {
+    const item = document.createElement('div');
+    item.className = 'version-row';
+    item.classList.toggle('current', row.isCurrent);
+    item.classList.toggle('pinned', row.isPinned);
+    item.classList.toggle('dimmed', row.excluded !== null && !row.isPinned && !row.isCurrent);
+    item.dataset.hash = row.hash;
+
+    const cover = document.createElement('img');
+    cover.className = 'version-cover';
+    cover.alt = '';
+    cover.onerror = () => {
+      cover.onerror = null;
+      cover.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'; // transparent pixel
+    };
+    if (row.coverUrl !== null) cover.src = row.coverUrl;
+
+    const text = document.createElement('div');
+    text.className = 'version-text';
+    const title = document.createElement('div');
+    title.className = 'version-title';
+    if (row.isCurrent) {
+      const playing = document.createElement('span');
+      playing.className = 'version-playing';
+      playing.textContent = '▶ ';
+      playing.title = t('versions_playing_title');
+      title.append(playing);
+    }
+    title.append(row.title);
+    title.title = row.title;
+    const meta = document.createElement('div');
+    meta.className = 'version-meta';
+    const parts = [row.mapper !== '' ? t('track_mapper_by', { mapper: row.mapper }) : '', row.duration !== null ? formatTime(row.duration) : ''];
+    meta.textContent = parts.filter((part) => part !== '').join(' · ');
+    text.append(title, meta);
+
+    const badges: HTMLElement[] = [];
+    if (row.isCompleted) badges.push(badge('version-badge-done', t('versions_badge_completed'), t('versions_badge_completed_title')));
+    if (!row.environmentSupported || row.excluded === 'unsupported') {
+      badges.push(badge('version-badge-warn', t('row_badge_unsupported_text'), t('row_badge_unsupported_title')));
+    }
+    if (row.mightUseGLS) badges.push(badge('version-badge-gls', t('row_badge_gls_text'), t('row_badge_gls_title')));
+    if (row.usesChroma) badges.push(badge('version-badge-good', t('row_badge_chroma_text'), t('row_badge_chroma_title')));
+    if (row.usesNoodleExtensions) badges.push(badge('version-badge-noodle', t('row_badge_noodle_text'), t('row_badge_noodle_title')));
+    if (row.excluded === 'rich') badges.push(badge('version-badge-skip', t('row_badge_skip_text'), t('row_badge_skip_title')));
+    if (row.differentEdit) badges.push(badge('version-badge-skip', t('versions_badge_other_edit'), t('versions_badge_other_edit_title')));
+    if (badges.length > 0) {
+      const line = document.createElement('div');
+      line.className = 'version-badges';
+      line.append(...badges);
+      text.append(line);
+    }
+
+    const pin = document.createElement('button');
+    pin.type = 'button';
+    pin.className = 'version-pin';
+    pin.classList.toggle('active', row.isPinned);
+    pin.dataset.action = 'pin';
+    pin.textContent = row.isPinned ? t('versions_pinned_button') : t('versions_pin_button');
+    pin.title = row.isPinned ? t('versions_unpin_title') : t('versions_pin_title');
+
+    item.append(cover, text, pin);
+    if (animate) {
+      item.classList.add('version-row-in');
+      item.style.animationDelay = `${String(Math.min(index, 10) * VERSIONS_ROW_STAGGER_MS)}ms`;
+    }
+    list.appendChild(item);
+  });
+  list.scrollTop = scrollTop;
+  updateVersionsScrollButtons();
+}
+
+/** ▲/▼ only when the list doesn't fit (Wallpaper Engine passes no mouse wheel to wallpapers). */
+function updateVersionsScrollButtons() {
+  const list = byId('versions-list');
+  if (list === null) return;
+  const overflowing = list.scrollHeight > list.clientHeight + 2;
+  const up = byId('versions-scroll-up');
+  const down = byId('versions-scroll-down');
+  if (up !== null) up.hidden = !overflowing;
+  if (down !== null) down.hidden = !overflowing;
+}
+
+function openVersionsView() {
+  if (!versionsAvailable(versionRows)) return;
+  closeAboutView();
+  setExpandActive(true);
+  byId('now-playing-panel')?.classList.add('expanded');
+  const view = byId('versions-view');
+  if (view === null) return;
+  if (versionsCloseTimer !== null) {
+    window.clearTimeout(versionsCloseTimer);
+    versionsCloseTimer = null;
+    view.classList.remove('closing');
+  }
+  view.classList.add('expanded');
+  byId('now-playing-expand')?.classList.add('versions-open');
+  byId('np-versions-toggle')?.classList.add('active');
+  renderVersions(true);
+  const list = byId('versions-list');
+  if (list !== null) list.scrollTop = 0;
+  // (Measured once laid out.)
+  window.requestAnimationFrame(updateVersionsScrollButtons);
+}
+
+function closeVersionsView() {
+  byId('np-versions-toggle')?.classList.remove('active');
+  const view = byId('versions-view');
+  if (view === null || !view.classList.contains('expanded') || view.classList.contains('closing')) return;
+  view.classList.add('closing');
+  versionsCloseTimer = window.setTimeout(() => {
+    versionsCloseTimer = null;
+    view.classList.remove('expanded', 'closing');
+    byId('now-playing-expand')?.classList.remove('versions-open');
+  }, VERSIONS_CLOSE_MS);
+}
+
 /** force=true always collapses, even while pinned (used when there's genuinely nothing to show). */
 function collapsePanel(force = false) {
   if (panelPinned && !force) return;
   byId('now-playing-panel')?.classList.remove('expanded');
   closeAboutView();
+  closeVersionsView();
   if (panelIdleTimer !== null) {
     window.clearTimeout(panelIdleTimer);
     panelIdleTimer = null;
@@ -769,6 +964,62 @@ export function initNowPlayingControls(handlers: NowPlayingHandlers) {
     resetPanelIdleTimer();
     setStatusPinned(!statusPinned);
   });
+
+  byId('np-versions-toggle')?.addEventListener('click', () => {
+    resetPanelIdleTimer();
+    if (versionsOpen()) closeVersionsView();
+    else openVersionsView();
+  });
+  byId('versions-close')?.addEventListener('click', () => {
+    resetPanelIdleTimer();
+    closeVersionsView();
+  });
+  const versionsList = byId('versions-list');
+  versionsList?.addEventListener('click', (event) => {
+    resetPanelIdleTimer();
+    if (!(event.target instanceof Element)) return;
+    const hash = event.target.closest<HTMLElement>('.version-row')?.dataset.hash;
+    const row = versionRows?.find((candidate) => candidate.hash === hash);
+    if (hash === undefined || row === undefined) return;
+    const onButton = event.target.closest('[data-action="pin"]') !== null;
+    if (onButton && row.isPinned) handlers.onUnpinVersion(hash);
+    else if (!(row.isPinned && row.isCurrent)) handlers.onChooseVersion(hash);
+  });
+  if (versionsList !== null) {
+    // Wallpaper Engine passes no mouse wheel or drag to wallpapers: ▲/▼ scroll the list, and so
+    // does holding the cursor near its top/bottom edge (where plain mouse moves get through).
+    const scrollByPage = (direction: 1 | -1) => {
+      resetPanelIdleTimer();
+      versionsList.scrollTop += direction * versionsList.clientHeight * 0.8;
+    };
+    byId('versions-scroll-up')?.addEventListener('click', () => scrollByPage(-1));
+    byId('versions-scroll-down')?.addEventListener('click', () => scrollByPage(1));
+    const EDGE_ZONE_PX = 24;
+    const SCROLL_STEP_PX = 5;
+    let hoverDirection = 0;
+    let hoverTimer: number | null = null;
+    const stopEdgeScroll = () => {
+      hoverDirection = 0;
+      if (hoverTimer !== null) {
+        window.clearInterval(hoverTimer);
+        hoverTimer = null;
+      }
+    };
+    versionsList.addEventListener('mousemove', (event) => {
+      const rect = versionsList.getBoundingClientRect();
+      const y = event.clientY - rect.top;
+      hoverDirection = y < EDGE_ZONE_PX ? -1 : y > rect.height - EDGE_ZONE_PX ? 1 : 0;
+      if (hoverDirection === 0) {
+        stopEdgeScroll();
+        return;
+      }
+      hoverTimer ??= window.setInterval(() => {
+        versionsList.scrollTop += hoverDirection * SCROLL_STEP_PX;
+        resetPanelIdleTimer(); // holding still to scroll counts as activity
+      }, 16);
+    });
+    versionsList.addEventListener('mouseleave', stopEdgeScroll);
+  }
 
   // "View map": a wallpaper can't open a browser, so the map's BeatSaver link is copied instead.
   byId('np-map-link')?.addEventListener('click', () => {
